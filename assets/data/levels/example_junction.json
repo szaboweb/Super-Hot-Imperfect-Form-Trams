@@ -1,0 +1,18 @@
+{
+  "id": "example_junction",
+  "city": "generic_european",
+  "tileSize": 64,
+  "segments": [
+    { "id": "main", "end": "connected", "nextSwitch": "sw1" },
+    { "id": "loop", "end": "construction" },
+    { "id": "river_spur", "end": "river" }
+  ],
+  "switches": [
+    { "id": "sw1", "straight": "loop", "diverging": "river_spur", "diverge": false }
+  ],
+  "spawns": [
+    { "segment": "main", "time": 0.0, "speed": 220 },
+    { "segment": "main", "time": 6.0, "speed": 260 }
+  ],
+  "goal": { "crashes": 2 }
+}
