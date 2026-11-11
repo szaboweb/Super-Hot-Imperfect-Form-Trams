@@ -1,6 +1,7 @@
 import 'dart:math' show Point;
 
 import '../systems/track_graph.dart';
+import 'prop_data.dart';
 
 class SpawnData {
   const SpawnData({
@@ -28,19 +29,25 @@ class LevelData {
     required this.id,
     required this.city,
     required this.tileSize,
+    required this.width,
+    required this.height,
     required this.segments,
     required this._switches,
     required this.spawns,
+    required this.props,
     required this.crashGoal,
   });
 
   /// Throws [FormatException] listing every problem found in [json].
   factory LevelData.fromJson(Map<String, dynamic> json) {
     final id = json['id'] as String? ?? '<unknown>';
+    final bounds = json['bounds'] as Map<String, dynamic>?;
     final level = LevelData._(
       id: id,
       city: json['city'] as String? ?? '',
       tileSize: (json['tileSize'] as num?)?.toInt() ?? 64,
+      width: (bounds?['width'] as num?)?.toDouble() ?? 1040,
+      height: (bounds?['height'] as num?)?.toDouble() ?? 680,
       segments: [
         for (final s in (json['segments'] as List? ?? const []))
           _segmentFromJson(s as Map<String, dynamic>),
@@ -52,6 +59,10 @@ class LevelData {
       spawns: [
         for (final s in (json['spawns'] as List? ?? const []))
           SpawnData.fromJson(s as Map<String, dynamic>),
+      ],
+      props: [
+        for (final p in (json['props'] as List? ?? const []))
+          PropData.fromJson(p as Map<String, dynamic>),
       ],
       crashGoal: ((json['goal'] as Map?)?['crashes'] as num?)?.toInt() ?? 0,
     );
@@ -65,8 +76,13 @@ class LevelData {
   final String id;
   final String city;
   final int tileSize;
+
+  /// Playable area size in world px, centred on the origin.
+  final double width;
+  final double height;
   final List<TrackSegment> segments;
   final List<SpawnData> spawns;
+  final List<PropData> props;
   final int crashGoal;
   final List<SwitchNode> _switches;
 
@@ -124,6 +140,10 @@ class LevelData {
       }
     }
     if (crashGoal <= 0) errors.add('goal.crashes must be > 0');
+    if (width <= 0 || height <= 0) errors.add('bounds must be > 0');
+    for (final p in props) {
+      errors.addAll(p.validate());
+    }
     return errors;
   }
 

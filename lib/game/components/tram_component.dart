@@ -5,17 +5,22 @@ import 'package:flame/components.dart';
 import 'package:flutter/services.dart';
 
 import '../graphics/pixel_art.dart';
+import '../graphics/render_layer.dart';
 import '../systems/track_path.dart';
 
-/// Tram that rides a [TrackPath]; drawn from a pixel-art [sprite] (Blender render
-/// cleaned up in Aseprite) or, when none is set, with Canvas shapes.
+/// Layer 4 (entities): tram that rides a [TrackPath]; drawn from a pixel-art
+/// [sprite] (Blender render cleaned up in Aseprite) or, when none is set, with Canvas shapes.
 class TramComponent extends PositionComponent with KeyboardHandler {
   TramComponent({
     required this.path,
     this.sprite,
     this.trackDistance = 0,
     this.speed = 0,
-  }) : super(size: Vector2(20, 56), anchor: Anchor.center) {
+  }) : super(
+         size: Vector2(20, 56),
+         anchor: Anchor.center,
+         priority: RenderLayer.entities.priority,
+       ) {
     _snapToPath();
   }
 
@@ -26,6 +31,9 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   static const double acceleration = 220;
   static const double drag = 0.8;
 
+  /// Minimum |speed| (px/s) at which braking leaves skid marks.
+  static const double skidMinSpeed = 60;
+
   /// -1 (brake/reverse) .. 1 (accelerate)
   double throttle = 0;
 
@@ -34,6 +42,12 @@ class TramComponent extends PositionComponent with KeyboardHandler {
 
   /// Distance travelled along [path] in px.
   double trackDistance;
+
+  /// 0 (cool) .. 1 (overheated); rises while braking hard.
+  double brakeHeat = 0;
+
+  /// Called every frame the tram is skidding (braking while moving).
+  void Function(Vector2 position, double angle)? onSkid;
 
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
@@ -50,11 +64,14 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   @override
   void update(double dt) {
     super.update(dt);
+    final braking = throttle * speed < 0 && speed.abs() > skidMinSpeed;
+    brakeHeat = (brakeHeat + (braking ? 0.4 : -0.15) * dt).clamp(0.0, 1.0);
     speed += throttle * acceleration * dt;
     speed *= math.pow(drag, dt).toDouble();
     speed = speed.clamp(-maxSpeed / 3, maxSpeed);
     trackDistance += speed * dt;
     _snapToPath();
+    if (braking) onSkid?.call(position, angle);
   }
 
   void _snapToPath() {

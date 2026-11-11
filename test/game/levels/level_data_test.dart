@@ -35,6 +35,31 @@ void main() {
     expect(level.buildGraph().advance('a').end, TrackEnd.river);
   });
 
+  test('props are parsed and invalid ones are reported', () {
+    final json = validLevel()
+      ..['props'] = [
+        {'type': 'channel', 'x': 0, 'y': 10, 'width': 100, 'height': 20},
+        {'type': 'signal', 'x': 5, 'y': 5, 'state': 'red'},
+      ];
+    final level = LevelData.fromJson(json);
+    expect(level.props.map((p) => p.type.name), ['channel', 'signal']);
+
+    json['props'] = [
+      {'type': 'building', 'x': 0, 'y': 0},
+      {'type': 'signal', 'x': 1, 'y': 1, 'state': 'blue'},
+    ];
+    expect(
+      () => LevelData.fromJson(json),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('building'), contains('blue')),
+        ),
+      ),
+    );
+  });
+
   test('broken references are reported', () {
     final json = validLevel();
     (json['switches'] as List)[0]['diverging'] = 'nope';

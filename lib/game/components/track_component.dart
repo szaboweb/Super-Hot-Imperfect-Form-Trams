@@ -3,11 +3,13 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 
+import '../graphics/render_layer.dart';
 import '../systems/track_path.dart';
 
 /// Draws a [TrackPath] as ballast, sleepers and two rails (Canvas rendering, no art needed).
 class TrackComponent extends PositionComponent {
-  TrackComponent({required this.path});
+  TrackComponent({required this.path})
+    : super(priority: RenderLayer.track.priority);
 
   final TrackPath path;
 
