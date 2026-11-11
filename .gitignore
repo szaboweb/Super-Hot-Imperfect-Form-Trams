@@ -67,7 +67,10 @@ secrets/
 # Business-confidential material (contracts, finance, store deals, keys lists)
 private/
 business/
-docs/private/
+
+# Documentation is local-only (game development notes); only README.md is committed
+docs/
+AGENTS.md
 
 # Release outputs
 distribution/steam/**/output/
