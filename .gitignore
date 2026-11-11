@@ -52,3 +52,30 @@ app.*.map.json
 *.blend2
 art/aseprite/export/*_raw/
 *.aseprite~
+
+# Secrets and signing keys
+.env
+.env.*
+*.keystore
+*.jks
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+
+# Business-confidential material (contracts, finance, store deals, keys lists)
+private/
+business/
+docs/private/
+
+# Release outputs
+distribution/steam/**/output/
+distribution/steam/**/*.log
+/*.zip
+
+# Editor settings
+.vscode/
+
+# Local AI agent skills (vibe-coding guardrails), not shared
+.github/skills/

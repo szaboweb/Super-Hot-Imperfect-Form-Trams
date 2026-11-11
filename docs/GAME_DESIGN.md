@@ -28,6 +28,7 @@ Amsterdam, Lisbon) are possible later: tilesets in `assets/images/tiles/<city>/`
 
 ## Code map
 - `lib/game/systems/track_graph.dart` – segments, switches, hazards (pure Dart, unit-tested)
+- `lib/game/levels/` – `LevelData` (JSON parsing + validation) and `LevelRepository` (loads `levels.json` manifest)
 - `lib/game/components/` – tram, player, switch, hazards (Flame components)
 - `assets/data/levels/*.json` – level definitions (see `example_junction.json`)
 

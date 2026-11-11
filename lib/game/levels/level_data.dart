@@ -1,0 +1,145 @@
+import '../systems/track_graph.dart';
+
+class SpawnData {
+  const SpawnData({
+    required this.segment,
+    required this.time,
+    required this.speed,
+  });
+
+  factory SpawnData.fromJson(Map<String, dynamic> json) => SpawnData(
+    segment: json['segment'] as String,
+    time: (json['time'] as num).toDouble(),
+    speed: (json['speed'] as num).toDouble(),
+  );
+
+  final String segment;
+
+  /// Seconds after level start.
+  final double time;
+  final double speed;
+}
+
+/// Parsed and validated level definition (see assets/data/levels/*.json).
+class LevelData {
+  LevelData._({
+    required this.id,
+    required this.city,
+    required this.tileSize,
+    required this.segments,
+    required this._switches,
+    required this.spawns,
+    required this.crashGoal,
+  });
+
+  /// Throws [FormatException] listing every problem found in [json].
+  factory LevelData.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? '<unknown>';
+    final level = LevelData._(
+      id: id,
+      city: json['city'] as String? ?? '',
+      tileSize: (json['tileSize'] as num?)?.toInt() ?? 64,
+      segments: [
+        for (final s in (json['segments'] as List? ?? const []))
+          _segmentFromJson(s as Map<String, dynamic>),
+      ],
+      switches: [
+        for (final s in (json['switches'] as List? ?? const []))
+          _switchFromJson(s as Map<String, dynamic>),
+      ],
+      spawns: [
+        for (final s in (json['spawns'] as List? ?? const []))
+          SpawnData.fromJson(s as Map<String, dynamic>),
+      ],
+      crashGoal: ((json['goal'] as Map?)?['crashes'] as num?)?.toInt() ?? 0,
+    );
+    final errors = level.validate();
+    if (errors.isNotEmpty) {
+      throw FormatException('Invalid level "$id":\n- ${errors.join('\n- ')}');
+    }
+    return level;
+  }
+
+  final String id;
+  final String city;
+  final int tileSize;
+  final List<TrackSegment> segments;
+  final List<SpawnData> spawns;
+  final int crashGoal;
+  final List<SwitchNode> _switches;
+
+  /// Fresh graph with every switch in its initial position.
+  TrackGraph buildGraph() => TrackGraph(
+    segments: segments,
+    switches: [
+      for (final s in _switches)
+        SwitchNode(
+          id: s.id,
+          straight: s.straight,
+          diverging: s.diverging,
+          diverge: s.diverge,
+        ),
+    ],
+  );
+
+  List<String> validate() {
+    final errors = <String>[];
+    final segmentIds = <String>{};
+    for (final s in segments) {
+      if (!segmentIds.add(s.id)) errors.add('duplicate segment "${s.id}"');
+    }
+    final switchIds = <String>{};
+    for (final s in _switches) {
+      if (!switchIds.add(s.id)) errors.add('duplicate switch "${s.id}"');
+      for (final target in [s.straight, s.diverging]) {
+        if (!segmentIds.contains(target)) {
+          errors.add('switch "${s.id}" points to unknown segment "$target"');
+        }
+      }
+    }
+    for (final s in segments) {
+      if (s.end != TrackEnd.connected) continue;
+      final hasSwitch = s.nextSwitch != null;
+      final hasSegment = s.nextSegment != null;
+      if (hasSwitch == hasSegment) {
+        errors.add(
+          'connected segment "${s.id}" needs exactly one of '
+          'nextSwitch / nextSegment',
+        );
+      } else if (hasSwitch && !switchIds.contains(s.nextSwitch)) {
+        errors.add('segment "${s.id}" uses unknown switch "${s.nextSwitch}"');
+      } else if (hasSegment && !segmentIds.contains(s.nextSegment)) {
+        errors.add('segment "${s.id}" continues to unknown "${s.nextSegment}"');
+      }
+    }
+    if (spawns.isEmpty) errors.add('no spawns');
+    for (final sp in spawns) {
+      if (!segmentIds.contains(sp.segment)) {
+        errors.add('spawn on unknown segment "${sp.segment}"');
+      }
+    }
+    if (crashGoal <= 0) errors.add('goal.crashes must be > 0');
+    return errors;
+  }
+
+  static TrackSegment _segmentFromJson(Map<String, dynamic> json) {
+    final endName = json['end'] as String? ?? 'connected';
+    final end = TrackEnd.values.asNameMap()[endName];
+    if (end == null) {
+      throw FormatException('Unknown track end "$endName"');
+    }
+    return TrackSegment(
+      id: json['id'] as String,
+      end: end,
+      nextSwitch: json['nextSwitch'] as String?,
+      nextSegment: json['nextSegment'] as String?,
+    );
+  }
+
+  static SwitchNode _switchFromJson(Map<String, dynamic> json) => SwitchNode(
+    id: json['id'] as String,
+    straight: json['straight'] as String,
+    diverging: json['diverging'] as String,
+    diverge: json['diverge'] as bool? ?? false,
+  );
+}

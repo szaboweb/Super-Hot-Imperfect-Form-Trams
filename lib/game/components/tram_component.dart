@@ -8,8 +8,9 @@ import '../graphics/pixel_art.dart';
 
 /// Tram drawn either from a pixel-art [sprite] (Blender render cleaned up in
 /// Aseprite, see docs/ASSET_PIPELINE.md) or, when none is set, with Canvas shapes.
-class Tram extends PositionComponent with KeyboardHandler {
-  Tram({this.sprite}) : super(size: Vector2(24, 64), anchor: Anchor.center);
+class TramComponent extends PositionComponent with KeyboardHandler {
+  TramComponent({this.sprite})
+    : super(size: Vector2(24, 64), anchor: Anchor.center);
 
   Sprite? sprite;
 
