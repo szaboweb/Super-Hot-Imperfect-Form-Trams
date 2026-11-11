@@ -5,43 +5,44 @@ import 'package:flame/components.dart';
 import 'package:flutter/services.dart';
 
 import '../graphics/pixel_art.dart';
+import '../systems/track_path.dart';
 
-/// Tram drawn either from a pixel-art [sprite] (Blender render cleaned up in
-/// Aseprite, see docs/ASSET_PIPELINE.md) or, when none is set, with Canvas shapes.
+/// Tram that rides a [TrackPath]; drawn from a pixel-art [sprite] (Blender render
+/// cleaned up in Aseprite) or, when none is set, with Canvas shapes.
 class TramComponent extends PositionComponent with KeyboardHandler {
-  TramComponent({this.sprite})
-    : super(size: Vector2(24, 64), anchor: Anchor.center);
+  TramComponent({
+    required this.path,
+    this.sprite,
+    this.trackDistance = 0,
+    this.speed = 0,
+  }) : super(size: Vector2(20, 56), anchor: Anchor.center) {
+    _snapToPath();
+  }
 
+  final TrackPath path;
   Sprite? sprite;
 
   static const double maxSpeed = 320;
   static const double acceleration = 220;
   static const double drag = 0.8;
-  static const double turnRate = 2.4; // rad/s at full speed
-
-  /// -1 (left) .. 1 (right)
-  double steer = 0;
 
   /// -1 (brake/reverse) .. 1 (accelerate)
   double throttle = 0;
 
-  double speed = 0;
+  /// Signed speed along the path in px/s.
+  double speed;
+
+  /// Distance travelled along [path] in px.
+  double trackDistance;
 
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
-    final left =
-        keysPressed.contains(LogicalKeyboardKey.arrowLeft) ||
-        keysPressed.contains(LogicalKeyboardKey.keyA);
-    final right =
-        keysPressed.contains(LogicalKeyboardKey.arrowRight) ||
-        keysPressed.contains(LogicalKeyboardKey.keyD);
     final up =
         keysPressed.contains(LogicalKeyboardKey.arrowUp) ||
         keysPressed.contains(LogicalKeyboardKey.keyW);
     final down =
         keysPressed.contains(LogicalKeyboardKey.arrowDown) ||
         keysPressed.contains(LogicalKeyboardKey.keyS);
-    steer = (right ? 1.0 : 0.0) - (left ? 1.0 : 0.0);
     throttle = (up ? 1.0 : 0.0) - (down ? 1.0 : 0.0);
     return true;
   }
@@ -52,10 +53,14 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     speed += throttle * acceleration * dt;
     speed *= math.pow(drag, dt).toDouble();
     speed = speed.clamp(-maxSpeed / 3, maxSpeed);
+    trackDistance += speed * dt;
+    _snapToPath();
+  }
 
-    angle += steer * turnRate * (speed / maxSpeed) * dt;
-    // Tram's nose points up at angle 0.
-    position += Vector2(math.sin(angle), -math.cos(angle)) * speed * dt;
+  void _snapToPath() {
+    final p = path.positionAt(trackDistance);
+    position.setValues(p.x, p.y);
+    angle = path.headingAt(trackDistance);
   }
 
   @override

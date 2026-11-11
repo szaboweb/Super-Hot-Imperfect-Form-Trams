@@ -1,3 +1,5 @@
+import 'dart:math' show Point;
+
 import '../systems/track_graph.dart';
 
 class SpawnData {
@@ -87,6 +89,9 @@ class LevelData {
     final segmentIds = <String>{};
     for (final s in segments) {
       if (!segmentIds.add(s.id)) errors.add('duplicate segment "${s.id}"');
+      if (s.points.length == 1) {
+        errors.add('segment "${s.id}" geometry needs at least 2 points');
+      }
     }
     final switchIds = <String>{};
     for (final s in _switches) {
@@ -133,6 +138,13 @@ class LevelData {
       end: end,
       nextSwitch: json['nextSwitch'] as String?,
       nextSegment: json['nextSegment'] as String?,
+      points: [
+        for (final p in (json['points'] as List? ?? const []))
+          Point<double>(
+            ((p as List)[0] as num).toDouble(),
+            (p[1] as num).toDouble(),
+          ),
+      ],
     );
   }
 

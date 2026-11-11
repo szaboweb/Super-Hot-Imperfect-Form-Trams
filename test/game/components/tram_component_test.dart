@@ -1,19 +1,24 @@
-import 'package:flame_test/flame_test.dart';
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:super_hot_imperfect_form_trams/game/components/tram_component.dart';
-import 'package:super_hot_imperfect_form_trams/game/tram_game.dart';
+import 'package:super_hot_imperfect_form_trams/game/systems/track_path.dart';
 
 void main() {
-  final game = FlameTester(TramGame.new);
+  final path = TrackPath(const [Point(0, 0), Point(0, -500)]);
 
-  game.testGameWidget(
-    'accelerating tram moves forward (up on screen)',
-    verify: (game, tester) async {
-      final startY = game.player.position.y;
-      game.player.throttle = 1;
-      game.update(0.5);
-      expect(game.player.position.y, lessThan(startY));
-      expect(game.player.speed, lessThanOrEqualTo(TramComponent.maxSpeed));
-    },
-  );
+  test('accelerating tram advances along the path and faces its direction', () {
+    final tram = TramComponent(path: path)..throttle = 1;
+    tram.update(0.5);
+    expect(tram.trackDistance, greaterThan(0));
+    expect(tram.position.y, lessThan(0));
+    expect(tram.position.x, closeTo(0, 0.001));
+    expect(tram.angle, closeTo(0, 0.001));
+    expect(tram.speed, lessThanOrEqualTo(TramComponent.maxSpeed));
+  });
+
+  test('tram starts exactly on the path at the given distance', () {
+    final tram = TramComponent(path: path, trackDistance: 100);
+    expect(tram.position.y, closeTo(-100, 0.001));
+  });
 }

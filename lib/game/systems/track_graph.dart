@@ -1,3 +1,5 @@
+import 'dart:math' show Point;
+
 /// What happens to a tram that reaches the end of a track segment.
 enum TrackEnd {
   /// Continues into the next node.
@@ -44,6 +46,7 @@ class TrackSegment {
     this.end = TrackEnd.connected,
     this.nextSwitch,
     this.nextSegment,
+    this.points = const [],
   });
 
   final String id;
@@ -54,6 +57,9 @@ class TrackSegment {
 
   /// Plain continuation without a switch (if [end] is connected).
   final String? nextSegment;
+
+  /// Rail centre-line in world px (empty = no geometry yet).
+  final List<Point<double>> points;
 }
 
 /// Graph of segments and switches for one level.
