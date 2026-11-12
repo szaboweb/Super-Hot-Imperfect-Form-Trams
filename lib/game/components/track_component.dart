@@ -8,8 +8,8 @@ import '../systems/track_path.dart';
 
 /// Draws a [TrackPath] as ballast, sleepers and two rails (Canvas rendering, no art needed).
 class TrackComponent extends PositionComponent {
-  TrackComponent({required this.path})
-    : super(priority: RenderLayer.track.priority);
+  TrackComponent({required this.path, int? priority})
+    : super(priority: priority ?? RenderLayer.track.priority);
 
   final TrackPath path;
 

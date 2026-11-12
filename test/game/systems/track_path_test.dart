@@ -34,6 +34,14 @@ void main() {
     expect(right.headingAt(50, lookAround: 1), closeTo(pi / 2, 0.001));
   });
 
+  test('nearest finds the path distance and gap of a point', () {
+    final line = TrackPath(const [Point(0, 0), Point(100, 0)]);
+    final hit = line.nearest(const Point(30, 4));
+    expect(hit.along, closeTo(30, 0.001));
+    expect(hit.gap, closeTo(4, 0.001));
+    expect(line.nearest(const Point(500, 0)).along, closeTo(100, 0.001));
+  });
+
   test('open path clamps at its ends', () {
     final open = TrackPath(const [Point(0, 0), Point(100, 0)]);
     expect(open.isClosed, isFalse);

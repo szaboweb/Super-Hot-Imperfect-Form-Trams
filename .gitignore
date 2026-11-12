@@ -82,3 +82,11 @@ distribution/steam/**/*.log
 
 # Local AI agent skills (vibe-coding guardrails), not shared
 .github/skills/
+.github/hooks/
+
+# Temporary files and local helper/one-off scripts (agents: put them here, not in tracked folders)
+tmp/
+scripts/
+*.tmp
+*.bak
+*.orig

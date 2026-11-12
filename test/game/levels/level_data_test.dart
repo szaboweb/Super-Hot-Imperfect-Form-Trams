@@ -2,10 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:super_hot_imperfect_form_trams/game/levels/level_data.dart';
 import 'package:super_hot_imperfect_form_trams/game/levels/level_repository.dart';
 import 'package:super_hot_imperfect_form_trams/game/systems/track_graph.dart';
+import 'package:super_hot_imperfect_form_trams/input/tram_controls.dart';
 
-Map<String, dynamic> validLevel() => {
+Map<String, dynamic> validLevel() => <String, dynamic>{
   'id': 't',
-  'segments': [
+  'segments': <Map<String, dynamic>>[
     {'id': 'main', 'nextSwitch': 'sw'},
     {'id': 'a', 'end': 'river'},
     {'id': 'b', 'end': 'deadEnd'},
@@ -55,6 +56,62 @@ void main() {
           (e) => e.message,
           'message',
           allOf(contains('building'), contains('blue')),
+        ),
+      ),
+    );
+  });
+
+  test(
+    'spawn controls and start distance are parsed; unknown controls fail',
+    () {
+      final json = validLevel();
+      (json['spawns'] as List)[0]
+        ..['controls'] = 'wasd'
+        ..['startDistance'] = 120;
+      final spawn = LevelData.fromJson(json).spawns.first;
+      expect(spawn.controls, TramControls.wasd);
+      expect(spawn.startDistance, 120);
+
+      (json['spawns'] as List)[0]['controls'] = 'joystick';
+      expect(() => LevelData.fromJson(json), throwsFormatException);
+    },
+  );
+
+  test('crossovers are parsed and checked against the segment geometry', () {
+    final json = validLevel();
+    (json['segments'] as List)[0]['points'] = [
+      [0, 100],
+      [0, -100],
+    ];
+    (json['segments'] as List)[1]['points'] = [
+      [-100, 0],
+      [100, 0],
+    ];
+    json['crossovers'] = [
+      {
+        'id': 'sw',
+        'x': 0,
+        'y': 0,
+        'links': [
+          {'from': 'main', 'to': 'a'},
+        ],
+      },
+    ];
+    final level = LevelData.fromJson(json);
+    expect(level.crossovers.single.links.single.to, 'a');
+    expect(level.crossovers.single.radius, 48);
+
+    (json['crossovers'] as List)[0]['x'] = 50;
+    (json['crossovers'] as List)[0]['links'] = [
+      {'from': 'main', 'to': 'ghost'},
+    ];
+    expect(
+      () => LevelData.fromJson(json),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('ghost'), contains('not on segment')),
         ),
       ),
     );

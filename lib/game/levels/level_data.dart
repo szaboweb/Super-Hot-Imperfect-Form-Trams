@@ -1,26 +1,50 @@
 import 'dart:math' show Point;
 
+import '../../input/tram_controls.dart';
 import '../systems/track_graph.dart';
+import 'crossover_data.dart';
 import 'prop_data.dart';
 
+/// One scheduled tram spawn on a segment (see `spawns` in the level JSON).
 class SpawnData {
   const SpawnData({
     required this.segment,
     required this.time,
     required this.speed,
+    this.controls,
+    this.startDistance = 0,
+    this.color = 0xFFE4572E,
   });
 
-  factory SpawnData.fromJson(Map<String, dynamic> json) => SpawnData(
-    segment: json['segment'] as String,
-    time: (json['time'] as num).toDouble(),
-    speed: (json['speed'] as num).toDouble(),
-  );
+  factory SpawnData.fromJson(Map<String, dynamic> json) {
+    final controlsName = json['controls'] as String?;
+    return SpawnData(
+      segment: json['segment'] as String,
+      time: (json['time'] as num).toDouble(),
+      speed: (json['speed'] as num).toDouble(),
+      controls: controlsName == null
+          ? null
+          : TramControls.values.asNameMap()[controlsName] ??
+                (throw FormatException('Unknown controls "$controlsName"')),
+      startDistance: (json['startDistance'] as num?)?.toDouble() ?? 0,
+      color: (json['color'] as num?)?.toInt() ?? 0xFFE4572E,
+    );
+  }
 
   final String segment;
 
   /// Seconds after level start.
   final double time;
   final double speed;
+
+  /// Keyboard layout of the player driving this tram; null = AI/unmanned.
+  final TramControls? controls;
+
+  /// Where on the segment the tram starts, in px along its path.
+  final double startDistance;
+
+  /// Canvas body colour as ARGB int.
+  final int color;
 }
 
 /// Parsed and validated level definition (see assets/data/levels/*.json).
@@ -35,6 +59,7 @@ class LevelData {
     required this._switches,
     required this.spawns,
     required this.props,
+    required this.crossovers,
     required this.crashGoal,
   });
 
@@ -64,6 +89,10 @@ class LevelData {
         for (final p in (json['props'] as List? ?? const []))
           PropData.fromJson(p as Map<String, dynamic>),
       ],
+      crossovers: [
+        for (final c in (json['crossovers'] as List? ?? const []))
+          CrossoverData.fromJson(c as Map<String, dynamic>),
+      ],
       crashGoal: ((json['goal'] as Map?)?['crashes'] as num?)?.toInt() ?? 0,
     );
     final errors = level.validate();
@@ -83,6 +112,9 @@ class LevelData {
   final List<TrackSegment> segments;
   final List<SpawnData> spawns;
   final List<PropData> props;
+
+  /// L-shaped switches between loops (flipped with the owner's SHIFT key).
+  final List<CrossoverData> crossovers;
   final int crashGoal;
   final List<SwitchNode> _switches;
 
@@ -143,6 +175,10 @@ class LevelData {
     if (width <= 0 || height <= 0) errors.add('bounds must be > 0');
     for (final p in props) {
       errors.addAll(p.validate());
+    }
+    final segmentsById = {for (final s in segments) s.id: s};
+    for (final c in crossovers) {
+      errors.addAll(c.validate(segmentsById));
     }
     return errors;
   }
