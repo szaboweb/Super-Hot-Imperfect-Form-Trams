@@ -90,3 +90,7 @@ scripts/
 *.tmp
 *.bak
 *.orig
+
+# Source art and distribution/store material is not part of the public case study
+art/
+distribution/
