@@ -29,9 +29,14 @@ import 'systems/turntable_turn.dart';
 import 'systems/track_path.dart';
 import 'systems/turntable_switch_system.dart';
 
-/// Root Flame game: loads the first level and builds the world layer by layer
-/// (see `RenderLayer`): depth, ground, track, entities, canopy, atmosphere + HUD.
+/// Root Flame game: loads [initialLevel] (or the first asset level) and builds
+/// the world layer by layer (see `RenderLayer`): depth, ground, track,
+/// entities, canopy, atmosphere + HUD.
 class TramGame extends FlameGame with HasKeyboardHandlerComponents {
+  TramGame({this.initialLevel});
+
+  final LevelData? initialLevel;
+
   /// All trams of the loaded level, in spawn order.
   final List<TramComponent> trams = [];
 
@@ -64,7 +69,7 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
   }
 
   Future<void> _loadLevel() async {
-    _level = (await LevelRepository().loadAll()).first;
+    _level = initialLevel ?? (await LevelRepository().loadAll()).first;
     GameLog.event(
       'level',
       '${_level.id}: ${_level.spawns.length} trams, '

@@ -1,10 +1,12 @@
 import 'dart:ui' show AppExitResponse;
 
-import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
 import 'core/sticky_keys_guard.dart';
-import 'game/tram_game.dart';
+import 'game/editor/editor_controller.dart';
+import 'game/levels/level_data.dart';
+import 'ui/screens/editor_screen.dart';
+import 'ui/screens/race_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,9 +24,44 @@ void main() {
   runApp(const TramsApp());
 }
 
-/// App root: a dark MaterialApp hosting the [GameWidget] with [TramGame].
-class TramsApp extends StatelessWidget {
+/// App root: dark MaterialApp switching between [EditorScreen] and [RaceScreen].
+class TramsApp extends StatefulWidget {
   const TramsApp({super.key});
+
+  @override
+  State<TramsApp> createState() => _TramsAppState();
+}
+
+class _TramsAppState extends State<TramsApp> {
+  final EditorController _editorController = EditorController();
+  bool _inRace = false;
+  LevelData? _raceLevel;
+
+  @override
+  void dispose() {
+    _editorController.dispose();
+    super.dispose();
+  }
+
+  void _startCustomRace(LevelData level) {
+    setState(() {
+      _raceLevel = level;
+      _inRace = true;
+    });
+  }
+
+  void _startDefaultRace() {
+    setState(() {
+      _raceLevel = null;
+      _inRace = true;
+    });
+  }
+
+  void _backToEditor() {
+    setState(() {
+      _inRace = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +69,13 @@ class TramsApp extends StatelessWidget {
       title: 'Super Hot Imperfect Form Trams',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true),
-      home: Scaffold(body: GameWidget(game: TramGame())),
+      home: _inRace
+          ? RaceScreen(level: _raceLevel, onBackToEditor: _backToEditor)
+          : EditorScreen(
+              controller: _editorController,
+              onStartRace: _startCustomRace,
+              onPlayDefault: _startDefaultRace,
+            ),
     );
   }
 }
