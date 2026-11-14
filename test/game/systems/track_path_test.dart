@@ -13,6 +13,15 @@ void main() {
     Point(0, 0),
   ]);
 
+  test('reversed is the same line driven backwards, created once', () {
+    final back = square.reversed;
+    expect(back.name, '_rev');
+    expect(back.length, closeTo(square.length, 0.001));
+    expect(back.points.first, square.points.last);
+    expect(back.reversed, same(square));
+    expect(square.reversed, same(back));
+  });
+
   test('length and closed detection', () {
     expect(square.length, closeTo(400, 0.001));
     expect(square.isClosed, isTrue);

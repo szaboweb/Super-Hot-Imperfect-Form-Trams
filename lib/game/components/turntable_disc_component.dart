@@ -3,10 +3,12 @@ import 'dart:ui';
 
 import 'package:flame/components.dart';
 
+import '../graphics/platform_shape_painter.dart';
 import '../graphics/render_layer.dart';
+import '../systems/turntable_movement.dart';
 import 'crossover_component.dart';
 
-/// Layer 2 (ground, below the rails): the round turntable base at a crossover.
+/// Layer 2 (ground, below the rails): the turntable base at a crossover (shape from platformShape, round by default).
 /// It turns with the switch ([CrossoverComponent.angle]); the marks show the rotation.
 class TurntableDiscComponent extends PositionComponent {
   TurntableDiscComponent({required this.crossover})
@@ -25,7 +27,7 @@ class TurntableDiscComponent extends PositionComponent {
   final Paint _pit = Paint()
     ..color = const Color(0xFF14151A)
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 3;
+    ..strokeWidth = 10;
   final Paint _mark = Paint()
     ..color = const Color(0xFF4A4E5A)
     ..strokeWidth = 3;
@@ -35,15 +37,22 @@ class TurntableDiscComponent extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
-    angle = crossover.turntableAngle;
+    angle = crossover.platformAngle;
   }
 
   @override
   void render(Canvas canvas) {
+    final data = crossover.data;
+    final shape = platformShapePath(
+      data.shape,
+      _radius,
+      lanePitch: crossover.lanePitch,
+    );
     canvas
-      ..drawCircle(Offset.zero, _radius + 6, _pit)
-      ..drawCircle(Offset.zero, _radius, _base)
-      ..drawCircle(Offset.zero, _radius, _rim);
+      ..drawPath(shape, _pit)
+      ..drawPath(shape, _base)
+      ..drawPath(shape, _rim);
+    if (data.movement != TurntableMovement.rotate) return;
     for (var i = 0; i < 8; i++) {
       final a = i * math.pi / 4;
       final from = Offset(math.sin(a), -math.cos(a));

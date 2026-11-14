@@ -14,14 +14,17 @@ import 'components/headlight_component.dart';
 import 'components/hud_component.dart';
 import 'components/overhead_wire_component.dart';
 import 'components/signal_component.dart';
+import 'components/slide_rail_component.dart';
 import 'components/turntable_disc_component.dart';
 import 'components/turntable_rail_component.dart';
 import 'components/track_component.dart';
 import 'components/tram_component.dart';
+import 'components/y_rail_component.dart';
 import 'levels/crossover_data.dart';
 import 'levels/level_data.dart';
 import 'levels/level_repository.dart';
 import 'levels/prop_data.dart';
+import 'systems/turntable_movement.dart';
 import 'systems/turntable_turn.dart';
 import 'systems/track_path.dart';
 import 'systems/turntable_switch_system.dart';
@@ -81,6 +84,7 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
               to: _paths[l.to]!,
               center: data.center,
               radius: data.radius,
+              movement: data.movement,
             ),
         ],
       ));
@@ -157,10 +161,20 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
       await world.addAll([
         crossover,
         TurntableDiscComponent(crossover: crossover),
-        TurntableRailComponent(crossover: crossover),
+        _railFor(crossover),
       ]);
     }
   }
+
+  /// The rails that move with a platform, by how it carries the tram.
+  TrackComponent _railFor(CrossoverComponent crossover) =>
+      switch (crossover.data.movement) {
+        TurntableMovement.rotate => TurntableRailComponent(
+          crossover: crossover,
+        ),
+        TurntableMovement.slide => SlideRailComponent(crossover: crossover),
+        TurntableMovement.reverse => YRailComponent(crossover: crossover),
+      };
 
   // 5. canopy
   Future<void> _buildCanopy() async {

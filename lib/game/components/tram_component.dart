@@ -142,8 +142,8 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     position.setValues(p.x, p.y);
     angle = ride.heading;
     if (!ride.finished) return;
-    path = ride.turn.to;
-    trackDistance = ride.turn.toAlong + ride.offset;
+    path = ride.exitPath;
+    trackDistance = ride.exitDistance;
     _ride = null;
     GameLog.event('tram', '$label left the turntable, now rides ${path.name}');
   }

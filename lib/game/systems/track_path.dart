@@ -15,7 +15,20 @@ class TrackPath {
   final List<math.Point<double>> points;
   final List<double> _cumulative;
 
+  TrackPath? _reversed;
+
   double get length => _cumulative.last;
+
+  /// The same line driven the other way (virtual path `<name>_rev`). Created once, so
+  /// identity checks work; `reversed.reversed` is this path again.
+  TrackPath get reversed => _reversed ??= (TrackPath(
+    points.reversed.toList(),
+    name: name.endsWith(_revSuffix)
+        ? name.substring(0, name.length - _revSuffix.length)
+        : '$name$_revSuffix',
+  ).._reversed = this);
+
+  static const String _revSuffix = '_rev';
 
   bool get isClosed => points.first.distanceTo(points.last) < 0.001;
 

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'track_path.dart';
+import 'turntable_movement.dart';
 import 'turntable_ride.dart';
 import 'turntable_turn.dart';
 
@@ -34,10 +35,18 @@ class TurnDecision {
         : '${offset.toStringAsFixed(1)}px from the disc centre '
               '(on the disc within ±${(turn.radius + halfLength).round()}px)';
     final outcome = (turn != null && isHit)
-        ? 'HIT, disc turns ${(turn.sweep * 180 / math.pi).round()}°'
+        ? 'HIT, ${_movementText(turn)}'
         : 'MISS';
     return '$tramLabel $keyLabel: $where -> $outcome';
   }
+
+  static String _movementText(TurntableTurn turn) => switch (turn.movement) {
+    TurntableMovement.rotate =>
+      'disc turns ${(turn.sweep * 180 / math.pi).round()}°',
+    TurntableMovement.slide =>
+      'platform slides ${turn.slideDistance.round()}px',
+    TurntableMovement.reverse => 'Y-turn reverses the tram',
+  };
 }
 
 /// Decides what a tram's SHIFT signal does, given all turntables of the level.
