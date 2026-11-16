@@ -81,4 +81,21 @@ void main() {
     );
     expect(decision.turn, same(turn), reason: 'offset -200 vs. -400');
   });
+
+  test('occupied platform returns BUSY decision and blocks boarding', () {
+    final decision = system.decide(
+      path: north,
+      distance: 270,
+      speed: 150,
+      halfLength: 28,
+      occupiedCenters: const [Point(0.0, 0.0)],
+    );
+    expect(decision.isHit, isFalse);
+    expect(decision.isOccupied, isTrue);
+    expect(decision.ride, isNull);
+    expect(
+      decision.describe(tramLabel: 'ARROWS', keyLabel: 'R-SHIFT'),
+      contains('BUSY'),
+    );
+  });
 }

@@ -84,18 +84,23 @@ void main() {
 
     test('buildLevel succeeds on valid two-loop layout and clears errors', () {
       final controller = EditorController();
-      // Loop 1: 2x2 at (1,1)-(2,2)
+      // Loop 1: 2x3 at (1,1)-(2,3)
       controller.placePiece(EditorPiece.cornerSE, (col: 1, row: 1));
       controller.placePiece(EditorPiece.cornerSW, (col: 2, row: 1));
-      controller.placePiece(EditorPiece.cornerNE, (col: 1, row: 2));
-      controller.placePiece(EditorPiece.cornerNW, (col: 2, row: 2));
+      controller.placePiece(EditorPiece.straightV, (col: 1, row: 2));
+      controller.placePiece(EditorPiece.straightV, (col: 2, row: 2));
+      controller.placePiece(EditorPiece.switchRectangle, (col: 2, row: 2));
+      controller.placePiece(EditorPiece.cornerNE, (col: 1, row: 3));
+      controller.placePiece(EditorPiece.cornerNW, (col: 2, row: 3));
       controller.placePiece(EditorPiece.tramGreen, (col: 1, row: 1));
 
-      // Loop 2: 2x2 at (4,1)-(5,2)
-      controller.placePiece(EditorPiece.cornerSE, (col: 4, row: 1));
-      controller.placePiece(EditorPiece.cornerSW, (col: 5, row: 1));
-      controller.placePiece(EditorPiece.cornerNE, (col: 4, row: 2));
-      controller.placePiece(EditorPiece.cornerNW, (col: 5, row: 2));
+      // Loop 2: 2x3 at (3,1)-(4,3)
+      controller.placePiece(EditorPiece.cornerSE, (col: 3, row: 1));
+      controller.placePiece(EditorPiece.cornerSW, (col: 4, row: 1));
+      controller.placePiece(EditorPiece.straightV, (col: 3, row: 2));
+      controller.placePiece(EditorPiece.straightV, (col: 4, row: 2));
+      controller.placePiece(EditorPiece.cornerNE, (col: 3, row: 3));
+      controller.placePiece(EditorPiece.cornerNW, (col: 4, row: 3));
       controller.placePiece(EditorPiece.tramRed, (col: 4, row: 1));
 
       final res = controller.buildLevel();
@@ -103,6 +108,39 @@ void main() {
       expect(res.level.spawns.length, 2);
       expect(controller.errors, isEmpty);
       expect(controller.errorCells, isEmpty);
+    });
+
+    test('exportJson and importJson round-trip preserves layout', () {
+      final source = EditorController()
+        ..placePiece(EditorPiece.cornerSE, (col: 1, row: 1))
+        ..placePiece(EditorPiece.straightH, (col: 2, row: 1))
+        ..placePiece(EditorPiece.tramGreen, (col: 2, row: 1));
+      final raw = source.exportJson();
+
+      final target = EditorController();
+      expect(target.importJson(raw), isTrue);
+      expect(target.grid.toJson(), source.grid.toJson());
+      expect(target.errors, isEmpty);
+      expect(target.statusMessage, isNotNull);
+    });
+
+    test('importJson rejects invalid JSON or bad layout without crashing', () {
+      final controller = EditorController()
+        ..placePiece(EditorPiece.straightH, (col: 0, row: 0));
+      expect(controller.importJson('{not valid json'), isFalse);
+      expect(controller.statusMessage, isNotNull);
+      expect(controller.grid.railAt((col: 0, row: 0)), EditorPiece.straightH);
+
+      expect(controller.importJson('[1, 2, 3]'), isFalse);
+      expect(controller.statusMessage, isNotNull);
+
+      expect(
+        controller.importJson(
+          '{"rails":[{"col":99,"row":0,"piece":"straightH"}]}',
+        ),
+        isFalse,
+      );
+      expect(controller.statusMessage, isNotNull);
     });
   });
 }

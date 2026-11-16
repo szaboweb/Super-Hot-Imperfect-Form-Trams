@@ -4,20 +4,23 @@ import 'dart:ui';
 import 'package:flame/components.dart';
 import 'package:flutter/painting.dart' show FontWeight, TextStyle;
 
+import '../systems/score_system.dart';
 import '../systems/track_path.dart';
 import 'tram_component.dart';
 
 /// Layer 7 (HUD): screen-space overlay added to the camera viewport.
 /// Per-tram speedometer and brake-heat bar, SHIFT switch hint and mini-map (placeholders).
 class HudComponent extends PositionComponent {
-  HudComponent({required this.trams, required this.paths});
+  HudComponent({required this.trams, required this.paths, this.score});
 
   final List<TramComponent> trams;
   final List<TrackPath> paths;
+  final ScoreSystem? score;
 
   static const double mapWidth = 150;
   static const double mapHeight = 96;
   static const double margin = 16;
+  static const double topRightBarClearance = 56;
   static const double rowHeight = 64;
 
   late final Rect _worldBox;
@@ -34,6 +37,20 @@ class HudComponent extends PositionComponent {
   final TextPaint _small = TextPaint(
     style: const TextStyle(color: Color(0xFFB8BCC8), fontSize: 13),
   );
+  final TextPaint _alert = TextPaint(
+    style: const TextStyle(
+      color: Color(0xFFE5483B),
+      fontSize: 12,
+      fontWeight: FontWeight.bold,
+    ),
+  );
+  final TextPaint _goalDone = TextPaint(
+    style: const TextStyle(
+      color: Color(0xFF3DDC84),
+      fontSize: 13,
+      fontWeight: FontWeight.bold,
+    ),
+  );
 
   @override
   void onGameResize(Vector2 size) {
@@ -43,21 +60,17 @@ class HudComponent extends PositionComponent {
 
   @override
   Future<void> onLoad() async {
-    var box = Rect.fromLTRB(
-      paths.first.points.first.x,
-      paths.first.points.first.y,
-      paths.first.points.first.x,
-      paths.first.points.first.y,
-    );
+    Rect? box;
     for (final path in paths) {
       for (final p in path.points) {
-        box = box.expandToInclude(Rect.fromLTWH(p.x, p.y, 0, 0));
+        final pointRect = Rect.fromLTWH(p.x, p.y, 0, 0);
+        box = box == null ? pointRect : box.expandToInclude(pointRect);
       }
     }
-    _worldBox = box;
+    _worldBox = box ?? const Rect.fromLTWH(-520, -340, 1040, 680);
     _mapScale = math.min(
-      (mapWidth - 12) / box.width,
-      (mapHeight - 12) / box.height,
+      (mapWidth - 12) / math.max(1.0, _worldBox.width),
+      (mapHeight - 12) / math.max(1.0, _worldBox.height),
     );
     _mapTrack = Path();
     for (final path in paths) {
@@ -84,8 +97,8 @@ class HudComponent extends PositionComponent {
     }
     _small.render(
       canvas,
-      'SHIFT from your tram while it is on a turntable turns it onto the other loop '
-      '(W/S tram: L-SHIFT, arrows tram: R-SHIFT)',
+      'SHIFT a váltón: áttérés / fordulás '
+      '(W/S: bal SHIFT, nyilak: jobb SHIFT, irány: WASD/nyilak)',
       Vector2(margin, size.y - 30),
     );
     _renderMiniMap(canvas);
@@ -94,14 +107,14 @@ class HudComponent extends PositionComponent {
   void _renderTramRow(Canvas canvas, TramComponent tram, double top) {
     // Placeholder unit conversion: px/s to "km/h".
     final kmh = (tram.speed.abs() * 0.3).round();
-    final label = tram.controls?.label ?? 'AUTO';
+    final label = tram.controls?.label ?? 'GÉPI';
     canvas.drawRect(
       Rect.fromLTWH(margin - 8, top + 4, 4, 44),
       Paint()..color = tram.color,
     );
     _big.render(canvas, '$kmh km/h', Vector2(margin, top));
     _small.render(canvas, label, Vector2(margin + 150, top + 8));
-    _small.render(canvas, 'BRAKE', Vector2(margin, top + 34));
+    _small.render(canvas, 'FÉK', Vector2(margin, top + 34));
     final barRect = Rect.fromLTWH(margin + 52, top + 37, 140, 10);
     canvas
       ..drawRect(barRect, Paint()..color = const Color(0x66000000))
@@ -119,10 +132,20 @@ class HudComponent extends PositionComponent {
             tram.brakeHeat,
           )!,
       );
+    if (tram.brakeHeat >= 0.85) {
+      _alert.render(
+        canvas,
+        'TÚLMELEGEDÉS!',
+        Vector2(barRect.right + 8, top + 34),
+      );
+    }
   }
 
   void _renderMiniMap(Canvas canvas) {
-    final mapOrigin = Offset(size.x - mapWidth - margin, margin);
+    final mapOrigin = Offset(
+      size.x - mapWidth - margin,
+      margin + topRightBarClearance,
+    );
     canvas
       ..save()
       ..translate(mapOrigin.dx, mapOrigin.dy)
@@ -145,5 +168,14 @@ class HudComponent extends PositionComponent {
       );
     }
     canvas.restore();
+    final activeScore = score;
+    if (activeScore != null) {
+      final goalPaint = activeScore.isGoalMet ? _goalDone : _small;
+      goalPaint.render(
+        canvas,
+        'CÉL: ${activeScore.crashCount} / ${activeScore.crashGoal} ÜTKÖZÉS',
+        Vector2(mapOrigin.dx, mapOrigin.dy + mapHeight + 6),
+      );
+    }
   }
 }

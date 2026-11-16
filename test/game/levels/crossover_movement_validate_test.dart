@@ -63,4 +63,39 @@ void main() {
     expect(check(PlatformShape.circle, 'a', 'a'), isNotEmpty);
     expect(check(PlatformShape.circle, 'a', 'lane'), isNotEmpty);
   });
+
+  test('a same-loop slide requires two parallel lanes >= 40 px apart', () {
+    final loopSegments = {
+      'narrow': const TrackSegment(
+        id: 'narrow',
+        points: [
+          Point(-10.0, 100.0),
+          Point(-10.0, -100.0),
+          Point(10.0, -100.0),
+          Point(10.0, 100.0),
+          Point(-10.0, 100.0),
+        ],
+      ),
+      'wide': const TrackSegment(
+        id: 'wide',
+        points: [
+          Point(-24.0, 100.0),
+          Point(-24.0, -100.0),
+          Point(24.0, -100.0),
+          Point(24.0, 100.0),
+          Point(-24.0, 100.0),
+        ],
+      ),
+    };
+    List<String> validateLoop(String id) => CrossoverData(
+      id: 'x',
+      x: 0,
+      y: 0,
+      shape: PlatformShape.rectangle,
+      links: [(from: id, to: id)],
+    ).validate(loopSegments);
+
+    expect(validateLoop('narrow'), contains(contains('két párhuzamos sáv')));
+    expect(validateLoop('wide'), isEmpty);
+  });
 }

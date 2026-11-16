@@ -25,7 +25,9 @@ class PropData {
   factory PropData.fromJson(Map<String, dynamic> json) {
     final name = json['type'] as String;
     final type = PropType.values.asNameMap()[name];
-    if (type == null) throw FormatException('Unknown prop type "$name"');
+    if (type == null) {
+      throw FormatException('Ismeretlen tereptárgy-típus: "$name"');
+    }
     return PropData(
       type: type,
       x: (json['x'] as num).toDouble(),
@@ -52,12 +54,12 @@ class PropData {
   List<String> validate() {
     final errors = <String>[];
     if (type != PropType.signal && (width <= 0 || height <= 0)) {
-      errors.add('${type.name} at ($x, $y) needs width and height > 0');
+      errors.add('a(z) ${type.name} ($x, $y) elemhez width és height > 0 kell');
     }
     if (type == PropType.signal &&
         state != null &&
         !signalStates.contains(state)) {
-      errors.add('signal at ($x, $y) has unknown state "$state"');
+      errors.add('a jelző ($x, $y) állapota ismeretlen: "$state"');
     }
     return errors;
   }

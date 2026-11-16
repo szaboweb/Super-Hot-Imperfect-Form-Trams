@@ -12,6 +12,7 @@ class TurnDecision {
     required this.offset,
     required this.halfLength,
     this.ride,
+    this.isOccupied = false,
   });
 
   /// The disc that was boarded (hit), else the nearest disc on the tram's loop; null if none.
@@ -23,6 +24,9 @@ class TurnDecision {
 
   /// The ride to start; null = MISS.
   final TurntableRide? ride;
+
+  /// True when a matching platform could not be boarded because another tram is riding it.
+  final bool isOccupied;
 
   bool get isHit => ride != null;
 
@@ -36,7 +40,7 @@ class TurnDecision {
               '(on the disc within ±${(turn.radius + halfLength).round()}px)';
     final outcome = (turn != null && isHit)
         ? 'HIT, ${_movementText(turn)}'
-        : 'MISS';
+        : (isOccupied ? 'BUSY (platform occupied)' : 'MISS');
     return '$tramLabel $keyLabel: $where -> $outcome';
   }
 
@@ -60,31 +64,72 @@ class TurntableSwitchSystem {
   final List<TurntableTurn> turns;
 
   /// The first disc the tram (centre at [distance] on [path], moving [speed] px/s)
-  /// is on and that can still turn in time becomes a ride; otherwise a miss that
-  /// names the nearest disc on the tram's loop.
+  /// is on and that can still turn in time becomes a ride; if [desiredDirection]
+  /// is given, prefers a turn whose exit points that way (dot > 0.5). Platforms
+  /// whose centre is in [occupiedCenters] are locked and yield a BUSY decision.
   TurnDecision decide({
     required TrackPath path,
     required double distance,
     required double speed,
     required double halfLength,
+    math.Point<double>? desiredDirection,
+    Iterable<math.Point<double>> occupiedCenters = const [],
   }) {
+    final candidates = <({TurntableTurn turn, TurntableRide ride})>[];
+    TurntableTurn? busyTurn;
     for (final turn in turns) {
       final ride = turn.board(path, distance, speed, halfLength);
-      if (ride != null) {
-        return TurnDecision(
-          turn: turn,
-          offset: turn.offsetOf(path, distance),
-          halfLength: halfLength,
-          ride: ride,
-        );
+      if (ride == null) continue;
+      if (_isOccupied(turn.center, occupiedCenters)) {
+        busyTurn ??= turn;
+      } else {
+        candidates.add((turn: turn, ride: ride));
       }
     }
-    final nearest = _nearest(path, distance);
+    if (candidates.isNotEmpty) {
+      final chosen = _pickByDirection(candidates, desiredDirection);
+      return TurnDecision(
+        turn: chosen.turn,
+        offset: chosen.turn.offsetOf(path, distance),
+        halfLength: halfLength,
+        ride: chosen.ride,
+      );
+    }
+    final fallback = busyTurn ?? _nearest(path, distance);
     return TurnDecision(
-      turn: nearest,
-      offset: nearest?.offsetOf(path, distance),
+      turn: fallback,
+      offset: fallback?.offsetOf(path, distance),
       halfLength: halfLength,
+      isOccupied: busyTurn != null,
     );
+  }
+
+  static bool _isOccupied(
+    math.Point<double> center,
+    Iterable<math.Point<double>> occupiedCenters,
+  ) {
+    for (final c in occupiedCenters) {
+      if (c.distanceTo(center) < 1.0) return true;
+    }
+    return false;
+  }
+
+  static ({TurntableTurn turn, TurntableRide ride}) _pickByDirection(
+    List<({TurntableTurn turn, TurntableRide ride})> candidates,
+    math.Point<double>? desired,
+  ) {
+    if (desired == null) return candidates.first;
+    ({TurntableTurn turn, TurntableRide ride})? best;
+    var bestDot = 0.5;
+    for (final c in candidates) {
+      final h = c.turn.to.headingAt(c.turn.toAlong);
+      final dot = math.sin(h) * desired.x - math.cos(h) * desired.y;
+      if (dot > bestDot) {
+        bestDot = dot;
+        best = c;
+      }
+    }
+    return best ?? candidates.first;
   }
 
   TurntableTurn? _nearest(TrackPath path, double distance) {

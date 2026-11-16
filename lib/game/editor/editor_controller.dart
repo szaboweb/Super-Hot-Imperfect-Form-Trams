@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
+import '../../core/game_log.dart';
 import 'editor_grid.dart';
 import 'editor_level_builder.dart';
 import 'editor_piece.dart';
@@ -10,8 +13,6 @@ class EditorController extends ChangeNotifier {
     EditorGrid? grid,
     this._builder = const EditorLevelBuilder(),
   }) : grid = grid ?? EditorGrid();
-
-  static final RegExp _cellPattern = RegExp(r'\((\d+)\. oszlop, (\d+)\. sor\)');
 
   final EditorGrid grid;
   final EditorLevelBuilder _builder;
@@ -87,16 +88,64 @@ class EditorController extends ChangeNotifier {
   /// Validates and builds a playable [LevelData] from the current grid.
   EditorBuildResult buildLevel() {
     final result = _builder.build(grid);
+    if (!grid.isEmpty) {
+      GameLog.event('editor', 'Térkép:\n${grid.toAscii()}');
+    }
     if (result.isValid) {
       _errors = const [];
       _errorCells = const {};
+      GameLog.event(
+        'editor',
+        'Pálya érvényes (${grid.rails.length} sín elem).',
+      );
     } else {
       _errors = List.unmodifiable(result.errors);
-      _errorCells = _extractErrorCells(result.errors);
+      _errorCells = Set.unmodifiable({
+        for (final issue in result.issues)
+          if (issue.cell != null) issue.cell!,
+      });
+      for (final error in result.errors) {
+        GameLog.event('editor', error);
+      }
     }
     _statusMessage = null;
     notifyListeners();
     return result;
+  }
+
+  /// Exports the current [grid] layout as formatted JSON.
+  String exportJson() =>
+      const JsonEncoder.withIndent('  ').convert(grid.toJson());
+
+  /// Imports a JSON layout string into [grid], returning whether it succeeded.
+  bool importJson(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('A JSON gyökér nem objektum.');
+      }
+      final loaded = EditorGrid.fromJson(decoded);
+      grid.clear();
+      for (final e in loaded.rails.entries) {
+        grid.place(e.value, e.key);
+      }
+      for (final e in loaded.trams.entries) {
+        grid.place(e.key, e.value);
+      }
+      _errors = const [];
+      _errorCells = const {};
+      _statusMessage = 'Pálya betöltve (${grid.rails.length} sín elem).';
+      notifyListeners();
+      return true;
+    } on FormatException {
+      _statusMessage = 'Érvénytelen JSON vagy pályaadat.';
+      notifyListeners();
+      return false;
+    } on TypeError {
+      _statusMessage = 'Érvénytelen JSON szerkezet.';
+      notifyListeners();
+      return false;
+    }
   }
 
   void _afterEdit(EditorEditResult result) {
@@ -116,17 +165,4 @@ class EditorController extends ChangeNotifier {
       'Előbb vedd le a villamost erről a celláról.',
     EditorEditResult.nothingThere => null,
   };
-
-  Set<EditorCell> _extractErrorCells(List<String> messages) {
-    final cells = <EditorCell>{};
-    for (final msg in messages) {
-      for (final match in _cellPattern.allMatches(msg)) {
-        final col = int.parse(match.group(1)!) - 1;
-        final row = int.parse(match.group(2)!) - 1;
-        final cell = (col: col, row: row);
-        if (grid.inBounds(cell)) cells.add(cell);
-      }
-    }
-    return Set.unmodifiable(cells);
-  }
 }

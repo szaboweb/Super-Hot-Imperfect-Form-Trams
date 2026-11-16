@@ -6,15 +6,17 @@ import 'editor_piece.dart';
 import 'editor_switch_planner.dart';
 import 'editor_tracer.dart';
 
-/// Result of [EditorLevelBuilder.build]: either [json] (validated) or [errors].
+/// Result of [EditorLevelBuilder.build]: either [json] (validated) or [issues].
 class EditorBuildResult {
   const EditorBuildResult.ok(Map<String, dynamic> this.json)
-    : errors = const [];
+    : issues = const [];
 
-  const EditorBuildResult.failed(this.errors) : json = null;
+  const EditorBuildResult.failed(this.issues) : json = null;
 
   final Map<String, dynamic>? json;
-  final List<String> errors;
+  final List<EditorIssue> issues;
+
+  List<String> get errors => [for (final i in issues) i.message];
 
   bool get isValid => json != null;
 
@@ -34,18 +36,19 @@ class EditorLevelBuilder {
   static const int _redColor = 0xFFE4572E;
 
   EditorBuildResult build(EditorGrid grid) {
-    final errors = _pre(grid);
-    if (errors.isNotEmpty) return EditorBuildResult.failed(errors);
+    final issues = _pre(grid);
+    if (issues.isNotEmpty) return EditorBuildResult.failed(issues);
     final tracer = EditorTracer(grid);
     final open = tracer.openEnds();
     if (open.isNotEmpty) {
       return EditorBuildResult.failed([
-        for (final o in open) EditorMessages.openEnd(o.cell, o.side),
+        for (final o in open)
+          EditorIssue(EditorMessages.openEnd(o.cell, o.side), cell: o.cell),
       ]);
     }
     final traced = tracer.rings();
     final plan = EditorSwitchPlanner(grid, traced).plan();
-    if (plan.errors.isNotEmpty) return EditorBuildResult.failed(plan.errors);
+    if (plan.issues.isNotEmpty) return EditorBuildResult.failed(plan.issues);
     final rings = [
       for (var i = 0; i < traced.length; i++)
         plan.reversedRings.contains(i) ? traced[i].reversed : traced[i],
@@ -54,15 +57,17 @@ class EditorLevelBuilder {
     try {
       LevelData.fromJson(json);
     } on FormatException catch (e) {
-      return EditorBuildResult.failed([EditorMessages.levelInvalid(e.message)]);
+      return EditorBuildResult.failed([
+        EditorIssue(EditorMessages.levelInvalid(e.message)),
+      ]);
     }
     return EditorBuildResult.ok(json);
   }
 
-  List<String> _pre(EditorGrid grid) => [
-    if (grid.rails.isEmpty) EditorMessages.emptyGrid,
+  List<EditorIssue> _pre(EditorGrid grid) => [
+    if (grid.rails.isEmpty) const EditorIssue(EditorMessages.emptyGrid),
     for (final t in [EditorPiece.tramGreen, EditorPiece.tramRed])
-      if (grid.tramCell(t) == null) EditorMessages.missingTram(t),
+      if (grid.tramCell(t) == null) EditorIssue(EditorMessages.missingTram(t)),
   ];
 
   String _segmentId(int ring) => 'loop_${ring + 1}';
@@ -129,7 +134,7 @@ class EditorLevelBuilder {
       EditorPiece.switchTriangle => 'triangle',
       _ => 'circle',
     };
-    final links = c.piece == EditorPiece.switchTriangle
+    final links = (c.piece == EditorPiece.switchTriangle || a == b)
         ? [
             for (final r in c.rings)
               {'from': _segmentId(r), 'to': _segmentId(r)},

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../game/editor/editor_controller.dart';
 import '../../game/levels/level_data.dart';
 import '../widgets/editor_grid_canvas.dart';
+import '../widgets/editor_json_dialogs.dart';
 import '../widgets/editor_sidebar.dart';
 
 /// Full-screen track editor: left piece shelves, 16x10 grid canvas, validation & START.
@@ -120,6 +121,26 @@ class _EditorToolbar extends StatelessWidget {
               ),
               icon: const Icon(Icons.layers_clear, size: 18),
               label: const Text('Ürítés'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: () => showEditorExportDialog(context, controller),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFCBD5E1),
+                side: const BorderSide(color: Color(0xFF334155)),
+              ),
+              icon: const Icon(Icons.upload_file, size: 18),
+              label: const Text('Mentés / Export'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: () => showEditorImportDialog(context, controller),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFCBD5E1),
+                side: const BorderSide(color: Color(0xFF334155)),
+              ),
+              icon: const Icon(Icons.download, size: 18),
+              label: const Text('Betöltés'),
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(

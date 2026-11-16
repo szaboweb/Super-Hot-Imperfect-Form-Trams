@@ -6,18 +6,30 @@ import '../../game/editor/editor_piece.dart';
 
 /// Paints a single [EditorPiece] centred inside [size] using pure Canvas.
 class EditorPiecePainter extends CustomPainter {
-  const EditorPiecePainter({required this.piece, this.dim = false});
+  const EditorPiecePainter({
+    required this.piece,
+    this.dim = false,
+    this.verticalRectangle = false,
+  });
 
   final EditorPiece piece;
   final bool dim;
+  final bool verticalRectangle;
 
   @override
-  void paint(Canvas canvas, Size size) =>
-      drawEditorPiece(canvas, size, piece, dim: dim);
+  void paint(Canvas canvas, Size size) => drawEditorPiece(
+    canvas,
+    size,
+    piece,
+    dim: dim,
+    verticalRectangle: verticalRectangle,
+  );
 
   @override
   bool shouldRepaint(covariant EditorPiecePainter old) =>
-      old.piece != piece || old.dim != dim;
+      old.piece != piece ||
+      old.dim != dim ||
+      old.verticalRectangle != verticalRectangle;
 }
 
 /// Draws [piece] into [canvas] within `Offset.zero & size` (pure Canvas, no assets).
@@ -26,6 +38,7 @@ void drawEditorPiece(
   Size size,
   EditorPiece piece, {
   bool dim = false,
+  bool verticalRectangle = false,
 }) {
   final alpha = dim ? 0.45 : 1.0;
   if (piece.isTram) {
@@ -33,7 +46,13 @@ void drawEditorPiece(
     return;
   }
   if (piece.isSwitch) {
-    _drawSwitch(canvas, size, piece, alpha);
+    _drawSwitch(
+      canvas,
+      size,
+      piece,
+      alpha,
+      verticalRectangle: verticalRectangle,
+    );
     return;
   }
   if (piece == EditorPiece.straightH || piece == EditorPiece.straightV) {
@@ -143,9 +162,16 @@ void _drawCorner(Canvas canvas, Size size, EditorPiece piece, double alpha) {
   }
 }
 
-void _drawSwitch(Canvas canvas, Size size, EditorPiece piece, double alpha) {
+void _drawSwitch(
+  Canvas canvas,
+  Size size,
+  EditorPiece piece,
+  double alpha, {
+  bool verticalRectangle = false,
+}) {
   final center = Offset(size.width * 0.5, size.height * 0.5);
-  final radius = math.min(size.width, size.height) * 0.4;
+  final u = math.min(size.width, size.height);
+  final radius = u * 0.4;
   final fill = Paint()
     ..color = const Color(0xFF334155).withValues(alpha: alpha);
   final border = Paint()
@@ -161,15 +187,17 @@ void _drawSwitch(Canvas canvas, Size size, EditorPiece piece, double alpha) {
     return;
   }
   if (piece == EditorPiece.switchRectangle) {
-    final rect = Rect.fromCenter(
-      center: center,
-      width: radius * 1.9,
-      height: radius * 1.35,
-    );
+    final rect = verticalRectangle
+        ? Rect.fromCenter(center: center, width: u * 0.42, height: u * 0.68)
+        : Rect.fromCenter(
+            center: center,
+            width: radius * 1.9,
+            height: radius * 1.35,
+          );
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
     canvas.drawRRect(rrect, fill);
     canvas.drawRRect(rrect, border);
-    _drawStraight(canvas, size, true, alpha);
+    _drawStraight(canvas, size, !verticalRectangle, alpha);
     return;
   }
   // switchTriangle

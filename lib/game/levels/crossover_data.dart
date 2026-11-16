@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
 import '../systems/turntable_movement.dart';
+import '../systems/turntable_turn_builder.dart';
 
 /// One L-turn between two segments, as written in the level JSON (`links`).
 typedef CrossoverLinkData = ({String from, String to});
@@ -87,8 +88,12 @@ class CrossoverData {
 
   List<String> validate(Map<String, TrackSegment> segments) {
     final errors = <String>[];
-    if (links.isEmpty) errors.add('crossover "$id" has no links');
-    if (radius <= 0) errors.add('crossover "$id" needs radius > 0');
+    if (links.isEmpty) {
+      errors.add('a(z) "$id" váltóhoz nem tartozik kapcsolat (links)');
+    }
+    if (radius <= 0) {
+      errors.add('a(z) "$id" váltó sugara (radius) > 0 kell legyen');
+    }
     for (final link in links) {
       errors.addAll(_validateLink(link, segments));
     }
@@ -105,31 +110,66 @@ class CrossoverData {
     final errors = <String>[];
     final same = link.from == link.to;
     if (shape == PlatformShape.triangle && !same) {
-      errors.add('crossover "$id" triangle link needs from == to (reverse)');
-    } else if (shape != PlatformShape.triangle && same) {
-      errors.add('crossover "$id" link needs two different segments');
+      errors.add(
+        'a(z) "$id" háromszög váltónál from == to szükséges (fordítás)',
+      );
     }
-    final maxGap = movement == TurntableMovement.slide ? radius : 2;
-    final paths = <TrackPath>[];
+    final maxGap = movement == TurntableMovement.slide ? radius : 2.0;
+    final resolved = <String, TrackPath>{};
     for (final name in {link.from, link.to}) {
-      final points = segments[name]?.points ?? const [];
-      if (points.length < 2) {
-        errors.add('crossover "$id" uses segment "$name" without geometry');
-      } else if (TrackPath(points).nearest(center).gap > maxGap) {
-        errors.add('crossover "$id" is not on segment "$name"');
-      } else {
-        paths.add(TrackPath(points));
-      }
+      final path = _validatedPath(name, segments, maxGap, errors);
+      if (path != null) resolved[name] = path;
     }
-    if (movement == TurntableMovement.slide && paths.length == 2) {
-      final a = paths[0].headingAt(paths[0].nearest(center).along);
-      final b = paths[1].headingAt(paths[1].nearest(center).along);
-      if (math.atan2(math.sin(a - b), math.cos(a - b)).abs() > 0.2) {
-        errors.add(
-          'crossover "$id" slide needs parallel, same-direction lanes',
-        );
-      }
+    final fromPath = resolved[link.from];
+    final toPath = resolved[link.to];
+    if (fromPath != null && toPath != null) {
+      _validateMovementGeometry(same, fromPath, toPath, errors);
     }
     return errors;
+  }
+
+  TrackPath? _validatedPath(
+    String name,
+    Map<String, TrackSegment> segments,
+    double maxGap,
+    List<String> errors,
+  ) {
+    final points = segments[name]?.points ?? const [];
+    if (points.length < 2) {
+      errors.add('a(z) "$id" váltó "$name" szakaszának nincs geometriája');
+      return null;
+    }
+    final path = TrackPath(points);
+    if (path.nearest(center).gap > maxGap) {
+      errors.add('a(z) "$id" váltó nincs rajta a(z) "$name" szakaszon');
+      return null;
+    }
+    return path;
+  }
+
+  void _validateMovementGeometry(
+    bool same,
+    TrackPath fromPath,
+    TrackPath toPath,
+    List<String> errors,
+  ) {
+    if (movement == TurntableMovement.slide) {
+      if (!TurntableTurnBuilder.hasValidSlide(
+        fromPath,
+        toPath,
+        center,
+        radius,
+      )) {
+        errors.add(
+          'a(z) "$id" csúsztatós váltóhoz két párhuzamos sáv szükséges',
+        );
+      }
+    } else if (same &&
+        movement == TurntableMovement.rotate &&
+        fromPath.crossingsNear(center).length < 2) {
+      errors.add(
+        'a(z) "$id" forgóváltóhoz két áthaladás szükséges a középponton',
+      );
+    }
   }
 }

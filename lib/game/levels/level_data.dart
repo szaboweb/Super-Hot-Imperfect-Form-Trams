@@ -25,7 +25,9 @@ class SpawnData {
       controls: controlsName == null
           ? null
           : TramControls.values.asNameMap()[controlsName] ??
-                (throw FormatException('Unknown controls "$controlsName"')),
+                (throw FormatException(
+                  'Ismeretlen irányítás: "$controlsName"',
+                )),
       startDistance: (json['startDistance'] as num?)?.toDouble() ?? 0,
       color: (json['color'] as num?)?.toInt() ?? 0xFFE4572E,
     );
@@ -56,7 +58,6 @@ class LevelData {
     required this.width,
     required this.height,
     required this.segments,
-    required this._switches,
     required this.spawns,
     required this.props,
     required this.crossovers,
@@ -77,10 +78,6 @@ class LevelData {
         for (final s in (json['segments'] as List? ?? const []))
           _segmentFromJson(s as Map<String, dynamic>),
       ],
-      switches: [
-        for (final s in (json['switches'] as List? ?? const []))
-          _switchFromJson(s as Map<String, dynamic>),
-      ],
       spawns: [
         for (final s in (json['spawns'] as List? ?? const []))
           SpawnData.fromJson(s as Map<String, dynamic>),
@@ -97,7 +94,9 @@ class LevelData {
     );
     final errors = level.validate();
     if (errors.isNotEmpty) {
-      throw FormatException('Invalid level "$id":\n- ${errors.join('\n- ')}');
+      throw FormatException(
+        'Érvénytelen pálya "$id":\n- ${errors.join('\n- ')}',
+      );
     }
     return level;
   }
@@ -116,63 +115,46 @@ class LevelData {
   /// L-shaped switches between loops (flipped with the owner's SHIFT key).
   final List<CrossoverData> crossovers;
   final int crashGoal;
-  final List<SwitchNode> _switches;
 
-  /// Fresh graph with every switch in its initial position.
-  TrackGraph buildGraph() => TrackGraph(
-    segments: segments,
-    switches: [
-      for (final s in _switches)
-        SwitchNode(
-          id: s.id,
-          straight: s.straight,
-          diverging: s.diverging,
-          diverge: s.diverge,
-        ),
-    ],
-  );
+  /// Track graph of the level segments and end hazards.
+  TrackGraph buildGraph() => TrackGraph(segments: segments);
 
   List<String> validate() {
     final errors = <String>[];
     final segmentIds = <String>{};
     for (final s in segments) {
-      if (!segmentIds.add(s.id)) errors.add('duplicate segment "${s.id}"');
+      if (!segmentIds.add(s.id)) errors.add('ismétlődő szakasz: "${s.id}"');
       if (s.points.length == 1) {
-        errors.add('segment "${s.id}" geometry needs at least 2 points');
-      }
-    }
-    final switchIds = <String>{};
-    for (final s in _switches) {
-      if (!switchIds.add(s.id)) errors.add('duplicate switch "${s.id}"');
-      for (final target in [s.straight, s.diverging]) {
-        if (!segmentIds.contains(target)) {
-          errors.add('switch "${s.id}" points to unknown segment "$target"');
-        }
+        errors.add(
+          'a(z) "${s.id}" szakasz geometriájához legalább 2 pont szükséges',
+        );
       }
     }
     for (final s in segments) {
       if (s.end != TrackEnd.connected) continue;
-      final hasSwitch = s.nextSwitch != null;
-      final hasSegment = s.nextSegment != null;
-      if (hasSwitch == hasSegment) {
+      final next = s.nextSegment;
+      if (next == null) {
         errors.add(
-          'connected segment "${s.id}" needs exactly one of '
-          'nextSwitch / nextSegment',
+          'a(z) "${s.id}" összekötött szakasznál nextSegment szükséges',
         );
-      } else if (hasSwitch && !switchIds.contains(s.nextSwitch)) {
-        errors.add('segment "${s.id}" uses unknown switch "${s.nextSwitch}"');
-      } else if (hasSegment && !segmentIds.contains(s.nextSegment)) {
-        errors.add('segment "${s.id}" continues to unknown "${s.nextSegment}"');
+      } else if (!segmentIds.contains(next)) {
+        errors.add(
+          'a(z) "${s.id}" szakasz ismeretlen szakaszba folytatódik: "$next"',
+        );
       }
     }
-    if (spawns.isEmpty) errors.add('no spawns');
+    if (spawns.isEmpty) errors.add('nincs megadva spawn (indulási pont)');
     for (final sp in spawns) {
       if (!segmentIds.contains(sp.segment)) {
-        errors.add('spawn on unknown segment "${sp.segment}"');
+        errors.add('spawn ismeretlen szakaszon: "${sp.segment}"');
       }
     }
-    if (crashGoal <= 0) errors.add('goal.crashes must be > 0');
-    if (width <= 0 || height <= 0) errors.add('bounds must be > 0');
+    if (crashGoal <= 0) {
+      errors.add('a goal.crashes értékének > 0-nak kell lennie');
+    }
+    if (width <= 0 || height <= 0) {
+      errors.add('a pálya határai (bounds) > 0 kell legyenek');
+    }
     for (final p in props) {
       errors.addAll(p.validate());
     }
@@ -187,12 +169,11 @@ class LevelData {
     final endName = json['end'] as String? ?? 'connected';
     final end = TrackEnd.values.asNameMap()[endName];
     if (end == null) {
-      throw FormatException('Unknown track end "$endName"');
+      throw FormatException('Ismeretlen sínvég: "$endName"');
     }
     return TrackSegment(
       id: json['id'] as String,
       end: end,
-      nextSwitch: json['nextSwitch'] as String?,
       nextSegment: json['nextSegment'] as String?,
       points: [
         for (final p in (json['points'] as List? ?? const []))
@@ -203,11 +184,4 @@ class LevelData {
       ],
     );
   }
-
-  static SwitchNode _switchFromJson(Map<String, dynamic> json) => SwitchNode(
-    id: json['id'] as String,
-    straight: json['straight'] as String,
-    diverging: json['diverging'] as String,
-    diverge: json['diverge'] as bool? ?? false,
-  );
 }

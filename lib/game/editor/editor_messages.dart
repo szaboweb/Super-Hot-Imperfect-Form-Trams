@@ -1,6 +1,14 @@
 import 'editor_grid.dart';
 import 'editor_piece.dart';
 
+/// A structured validation issue with an optional grid [cell] to highlight.
+class EditorIssue {
+  const EditorIssue(this.message, {this.cell});
+
+  final String message;
+  final EditorCell? cell;
+}
+
 /// Every message the editor level builder can report (Hungarian), in one place.
 abstract final class EditorMessages {
   static const String emptyGrid = 'Üres pálya: tegyél le sínt.';
@@ -25,14 +33,17 @@ abstract final class EditorMessages {
   static String rectNoLane(EditorCell c) =>
       'Téglalap kitérő ${_at(c)}: a szomszéd cellában nincs párhuzamos egyenes sín.';
 
-  static String rectSameLoop(EditorCell c) =>
-      'Téglalap kitérő ${_at(c)}: a két sáv ugyanahhoz a körhöz tartozik.';
-
   static String rectOpposite(EditorCell c) =>
       'Téglalap kitérő ${_at(c)}: a két sáv ellentétes irányú, nem forgatható egyeztetni.';
 
-  static String circleSameLoop(EditorCell c) =>
-      'Kör váltó ${_at(c)}: mindkét sín ugyanahhoz a körhöz tartozik.';
+  static String rectDuplicate(EditorCell c) =>
+      'Téglalap kitérő ${_at(c)}: ezen a sávpáron már van egy téglalap kitérő.';
+
+  static String switchOverlap(EditorCell c) =>
+      'Átfedő váltók ${_at(c)}: két váltó túl közel van egymáshoz (min. 96 px).';
+
+  static String disconnectedTrack(EditorCell c) =>
+      'Különálló pályarész ${_at(c)}: erről a sínről nem lehet átváltani.';
 
   static String levelInvalid(String detail) => 'Érvénytelen pálya: $detail';
 }

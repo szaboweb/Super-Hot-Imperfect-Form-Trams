@@ -74,6 +74,7 @@ class _GridCellWidgetState extends State<_GridCellWidget> {
     final tram = grid.tramAt(widget.cell);
     final topPiece = tram ?? rail;
     final hasError = widget.controller.errorCells.contains(widget.cell);
+    final verticalRectangle = grid.isVerticalRectangle(widget.cell);
 
     return DragTarget<EditorDragPayload>(
       onWillAcceptWithDetails: (_) => true,
@@ -98,6 +99,7 @@ class _GridCellWidgetState extends State<_GridCellWidget> {
               cell: widget.cell,
               rail: rail,
               tram: tram,
+              verticalRectangle: verticalRectangle,
               hasError: hasError,
               isDragTarget: isDragTarget,
               hovered: _hovered,
@@ -114,13 +116,19 @@ class _GridCellWidgetState extends State<_GridCellWidget> {
             child: SizedBox(
               width: 56,
               height: 56,
-              child: CustomPaint(painter: EditorPiecePainter(piece: topPiece)),
+              child: CustomPaint(
+                painter: EditorPiecePainter(
+                  piece: topPiece,
+                  verticalRectangle: topPiece == rail && verticalRectangle,
+                ),
+              ),
             ),
           ),
           childWhenDragging: _CellVisual(
             cell: widget.cell,
             rail: tram != null ? rail : null,
             tram: null,
+            verticalRectangle: verticalRectangle,
             hasError: hasError,
             isDragTarget: false,
             hovered: _hovered,
@@ -137,6 +145,7 @@ class _CellVisual extends StatelessWidget {
     required this.cell,
     required this.rail,
     required this.tram,
+    required this.verticalRectangle,
     required this.hasError,
     required this.isDragTarget,
     required this.hovered,
@@ -145,6 +154,7 @@ class _CellVisual extends StatelessWidget {
   final EditorCell cell;
   final EditorPiece? rail;
   final EditorPiece? tram;
+  final bool verticalRectangle;
   final bool hasError;
   final bool isDragTarget;
   final bool hovered;
@@ -166,7 +176,12 @@ class _CellVisual extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (rail != null)
-            CustomPaint(painter: EditorPiecePainter(piece: rail!)),
+            CustomPaint(
+              painter: EditorPiecePainter(
+                piece: rail!,
+                verticalRectangle: verticalRectangle,
+              ),
+            ),
           if (tram != null)
             CustomPaint(painter: EditorPiecePainter(piece: tram!)),
           if (cell.row == 0 || cell.col == 0)

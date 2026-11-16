@@ -7,12 +7,9 @@ import 'package:super_hot_imperfect_form_trams/input/tram_controls.dart';
 Map<String, dynamic> validLevel() => <String, dynamic>{
   'id': 't',
   'segments': <Map<String, dynamic>>[
-    {'id': 'main', 'nextSwitch': 'sw'},
+    {'id': 'main', 'nextSegment': 'a'},
     {'id': 'a', 'end': 'river'},
     {'id': 'b', 'end': 'deadEnd'},
-  ],
-  'switches': [
-    {'id': 'sw', 'straight': 'a', 'diverging': 'b'},
   ],
   'spawns': [
     {'segment': 'main', 'time': 0, 'speed': 200},
@@ -28,12 +25,12 @@ void main() {
     expect(levels, isNotEmpty);
   });
 
-  test('buildGraph returns fresh switch state each time', () {
+  test('buildGraph resolves segment transitions and hazards', () {
     final level = LevelData.fromJson(validLevel());
-    final g1 = level.buildGraph()..switches['sw']!.toggle();
-    expect(g1.advance('main').next, 'b');
-    expect(level.buildGraph().advance('main').next, 'a');
-    expect(level.buildGraph().advance('a').end, TrackEnd.river);
+    final g = level.buildGraph();
+    expect(g.advance('main').next, 'a');
+    expect(g.advance('a').end, TrackEnd.river);
+    expect(g.advance('b').end, TrackEnd.deadEnd);
   });
 
   test('props are parsed and invalid ones are reported', () {
@@ -111,7 +108,10 @@ void main() {
         isA<FormatException>().having(
           (e) => e.message,
           'message',
-          allOf(contains('ghost'), contains('not on segment')),
+          allOf(
+            contains('ghost'),
+            contains('nincs rajta a(z) "main" szakaszon'),
+          ),
         ),
       ),
     );
@@ -119,7 +119,7 @@ void main() {
 
   test('broken references are reported', () {
     final json = validLevel();
-    (json['switches'] as List)[0]['diverging'] = 'nope';
+    (json['segments'] as List)[0]['nextSegment'] = 'nope';
     (json['spawns'] as List)[0]['segment'] = 'ghost';
     expect(
       () => LevelData.fromJson(json),

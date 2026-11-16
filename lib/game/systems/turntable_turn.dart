@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'track_path.dart';
 import 'turntable_movement.dart';
 import 'turntable_ride.dart';
+import 'turntable_turn_builder.dart';
 
 /// A crossover platform at the point where loop [from] meets loop [to]: a tram on [from]
 /// that is on the platform can have it carry the tram on to [to], moving as [movement]
@@ -34,21 +35,41 @@ class TurntableTurn {
     TurntableMovement movement = TurntableMovement.rotate,
   }) {
     final exit = movement == TurntableMovement.reverse ? from.reversed : to;
-    final fromAlong = from.nearest(center).along;
-    final toAlong = exit.nearest(center).along;
+    return TurntableTurn.create(
+      from: from,
+      to: exit,
+      center: center,
+      radius: radius,
+      fromAlong: from.nearest(center).along,
+      toAlong: exit.nearest(center).along,
+      movement: movement,
+    );
+  }
+
+  /// Constructs a [TurntableTurn] from precomputed [fromAlong] and [toAlong]
+  /// crossing positions.
+  factory TurntableTurn.create({
+    required TrackPath from,
+    required TrackPath to,
+    required math.Point<double> center,
+    required double radius,
+    required double fromAlong,
+    required double toAlong,
+    required TurntableMovement movement,
+  }) {
     final fromHeading = from.headingAt(fromAlong);
     final fromPoint = from.positionAt(fromAlong);
     return TurntableTurn(
       from: from,
-      to: exit,
+      to: to,
       center: center,
       radius: radius,
       fromAlong: fromAlong,
       toAlong: toAlong,
       fromHeading: fromHeading,
       sweep: switch (movement) {
-        TurntableMovement.rotate => _wrapPi(
-          exit.headingAt(toAlong) - fromHeading,
+        TurntableMovement.rotate => TurntableTurnBuilder.wrapPi(
+          to.headingAt(toAlong) - fromHeading,
         ),
         TurntableMovement.slide => 0,
         TurntableMovement.reverse => math.pi,
@@ -56,10 +77,25 @@ class TurntableTurn {
       movement: movement,
       fromPoint: fromPoint,
       slide: movement == TurntableMovement.slide
-          ? exit.positionAt(toAlong) - fromPoint
+          ? to.positionAt(toAlong) - fromPoint
           : const math.Point(0, 0),
     );
   }
+
+  /// Forwards to [TurntableTurnBuilder.buildAll].
+  static List<TurntableTurn> buildAll({
+    required TrackPath from,
+    required TrackPath to,
+    required math.Point<double> center,
+    double radius = 48,
+    TurntableMovement movement = TurntableMovement.rotate,
+  }) => TurntableTurnBuilder.buildAll(
+    from: from,
+    to: to,
+    center: center,
+    radius: radius,
+    movement: movement,
+  );
 
   /// The platform never moves faster than this, even if the tram is about to leave it
   /// (it then rides the still-moving platform a little past the edge).
@@ -93,9 +129,6 @@ class TurntableTurn {
   /// Lane distance of a slide, px.
   double get slideDistance => slide.distanceTo(const math.Point(0, 0));
 
-  /// A reversing tram must not have passed the fork (the platform centre) yet.
-  static const double forkOffset = 0;
-
   /// Distance along [path] of the crossing; null if [path] is not served by this turn.
   /// A reverse turn serves its loop in both directions.
   double? alongOn(TrackPath path) {
@@ -118,10 +151,10 @@ class TurntableTurn {
   }
 
   /// Starts a ride if any part of the tram (centre at [distance] on [path], moving
-  /// [speed] px/s) is on the platform: nose or tail within the radius. A rotating or
-  /// sliding platform moves as fast as needed to finish while the tram is on it, within
-  /// [minRideSeconds]..[maxRideSeconds]. Null if the tram is off the platform, stopped,
-  /// on another loop, or (reverse) already past the fork.
+  /// [speed] px/s, positive forward or negative in reverse gear) is on the platform:
+  /// nose or tail within the radius. A rotating or sliding platform moves as fast as
+  /// needed to finish while the tram is on it, within [minRideSeconds]..[maxRideSeconds].
+  /// Null if the tram is off the platform, stopped, or on another loop.
   TurntableRide? board(
     TrackPath path,
     double distance,
@@ -129,24 +162,19 @@ class TurntableTurn {
     double halfLength,
   ) {
     final offset = offsetOf(path, distance);
-    if (offset == null || speed <= 0) return null;
+    if (offset == null || speed == 0) return null;
+    final travelSign = speed < 0 ? -1.0 : 1.0;
+    final signedOffset = offset * travelSign;
     final reach = radius + halfLength;
-    if (offset < -reach || offset > reach) return null;
-    if (movement == TurntableMovement.reverse && offset > forkOffset) {
-      return null;
-    }
-    final seconds = (reach - offset) / speed;
+    if (signedOffset < -reach || signedOffset > reach) return null;
+    final seconds = (reach - signedOffset) / speed.abs();
     return TurntableRide(
       turn: this,
       entry: path,
       offset: offset,
       duration: seconds.clamp(minRideSeconds, maxRideSeconds),
       halfLength: halfLength,
+      travelSign: travelSign,
     );
-  }
-
-  static double _wrapPi(double a) {
-    final wrapped = (a + math.pi) % (2 * math.pi);
-    return wrapped - math.pi;
   }
 }

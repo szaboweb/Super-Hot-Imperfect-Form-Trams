@@ -27,16 +27,14 @@ void main() {
   });
 
   test(
-    'boarding only works before the fork (centre not past the platform)',
+    'boarding works across the full [-reach, +reach] window on the platform',
     () {
       expect(turn.board(loop, 300 - 60, 160, 28), isNotNull);
       expect(turn.board(loop, 300, 160, 28), isNotNull);
-      expect(
-        turn.board(loop, 300 + 10, 160, 28),
-        isNull,
-        reason: 'past the fork',
-      );
+      expect(turn.board(loop, 300 + 10, 160, 28), isNotNull);
+      expect(turn.board(loop, 300 + 70, 160, 28), isNotNull);
       expect(turn.board(loop, 300 - 90, 160, 28), isNull, reason: 'too early');
+      expect(turn.board(loop, 300 + 90, 160, 28), isNull, reason: 'past reach');
     },
   );
 
@@ -59,15 +57,48 @@ void main() {
     expect(onExit.y, closeTo(76, 0.5), reason: 'radius + half length behind');
   });
 
-  test('a tram on the reversed path can reverse back', () {
-    final back = loop.reversed;
-    final along = back.nearest(const Point(0.0, 0.0)).along;
-    final ride = turn.board(back, along - 40, 160, 28);
-    expect(ride, isNotNull);
-    expect(turn.board(back, along + 10, 160, 28), isNull);
-    while (!ride!.finished) {
-      ride.advance(0.01, 160);
+  test('boarding past the centre enters smoothly and exits cleanly', () {
+    for (final offset in [40.0, 70.0]) {
+      final distance = 300 + offset;
+      final ride = turn.board(loop, distance, 160, 28)!;
+      final entryPos = loop.positionAt(distance);
+      expect(ride.position.distanceTo(entryPos), lessThanOrEqualTo(0.5));
+      var guard = 0;
+      while (!ride.finished && guard++ < 4000) {
+        ride.advance(0.01, 160);
+      }
+      expect(ride.finished, isTrue);
+      expect(ride.exitPath, same(loop.reversed));
+      expect(cos(ride.heading), lessThan(-0.9));
+      final exitPos = loop.reversed.positionAt(ride.exitDistance);
+      expect(ride.position.distanceTo(exitPos), lessThanOrEqualTo(0.5));
     }
-    expect(ride.exitPath, same(loop));
   });
+
+  test(
+    'a tram on the reversed path can reverse back across the full window',
+    () {
+      final back = loop.reversed;
+      final along = back.nearest(const Point(0.0, 0.0)).along;
+      expect(turn.board(back, along + 90, 160, 28), isNull);
+      for (final delta in [-40.0, 40.0, 70.0]) {
+        final distance = along + delta;
+        final ride = turn.board(back, distance, 160, 28)!;
+        expect(
+          ride.position.distanceTo(back.positionAt(distance)),
+          lessThanOrEqualTo(0.5),
+        );
+        var guard = 0;
+        while (!ride.finished && guard++ < 4000) {
+          ride.advance(0.01, 160);
+        }
+        expect(ride.finished, isTrue);
+        expect(ride.exitPath, same(loop));
+        expect(
+          ride.position.distanceTo(loop.positionAt(ride.exitDistance)),
+          lessThanOrEqualTo(0.5),
+        );
+      }
+    },
+  );
 }

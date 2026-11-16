@@ -7,6 +7,7 @@ import 'game/editor/editor_controller.dart';
 import 'game/levels/level_data.dart';
 import 'ui/screens/editor_screen.dart';
 import 'ui/screens/race_screen.dart';
+import 'ui/widgets/log_overlay_window.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,13 +70,18 @@ class _TramsAppState extends State<TramsApp> {
       title: 'Super Hot Imperfect Form Trams',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true),
-      home: _inRace
-          ? RaceScreen(level: _raceLevel, onBackToEditor: _backToEditor)
-          : EditorScreen(
-              controller: _editorController,
-              onStartRace: _startCustomRace,
-              onPlayDefault: _startDefaultRace,
-            ),
+      home: Stack(
+        children: [
+          _inRace
+              ? RaceScreen(level: _raceLevel, onBackToEditor: _backToEditor)
+              : EditorScreen(
+                  controller: _editorController,
+                  onStartRace: _startCustomRace,
+                  onPlayDefault: _startDefaultRace,
+                ),
+          const Positioned(right: 16, bottom: 16, child: LogOverlayWindow()),
+        ],
+      ),
     );
   }
 }

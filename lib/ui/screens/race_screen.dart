@@ -38,6 +38,52 @@ class _RaceScreenState extends State<RaceScreen> {
           GameWidget(key: ObjectKey(_game), game: _game),
           Positioned(
             top: 12,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Center(
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _game.goalMetNotifier,
+                  builder: (context, goalMet, _) {
+                    if (!goalMet) return const SizedBox.shrink();
+                    final score = _game.scoreSystem;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xE60F172A),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF3DDC84)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            color: Color(0xFF3DDC84),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Cél teljesítve! '
+                            '(${score.crashCount}/${score.crashGoal} ütközés)',
+                            style: const TextStyle(
+                              color: Color(0xFFF8FAFC),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 12,
             right: 12,
             child: Row(
               children: [

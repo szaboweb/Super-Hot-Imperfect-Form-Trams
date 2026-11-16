@@ -17,12 +17,19 @@ class TurntableRide {
     required this.offset,
     required this.duration,
     required this.halfLength,
+    this.travelSign = 1.0,
   }) : _entryLength = turn.radius + halfLength,
        _entryHeading = entry.headingAt(turn.alongOn(entry) ?? 0),
        _y = turn.movement == TurntableMovement.reverse
            ? yTurnPath(radius: turn.radius, entry: turn.radius + halfLength)
            : null {
-    _u = offset + _entryLength;
+    _leadOffset = math.max(0.0, _signedOffset);
+    _startU =
+        (turn.movement == TurntableMovement.reverse
+            ? math.min(0.0, _signedOffset)
+            : _signedOffset) +
+        _entryLength;
+    _u = _startU;
   }
 
   final TurntableTurn turn;
@@ -40,11 +47,18 @@ class TurntableRide {
   /// Half the tram length, to know when its tail has left the platform.
   final double halfLength;
 
+  /// +1.0 when boarding in forward gear, -1.0 when boarding in reverse gear.
+  final double travelSign;
+
   final double _entryLength;
   final double _entryHeading;
   final TrackPath? _y;
+  late final double _leadOffset;
+  late final double _startU;
   late double _u;
   double _elapsed = 0;
+
+  double get _signedOffset => offset * travelSign;
 
   TurntableMovement get movement => turn.movement;
 
@@ -64,7 +78,8 @@ class TurntableRide {
   double get platformAngle => switch (movement) {
     TurntableMovement.rotate => angle,
     TurntableMovement.slide => 0,
-    TurntableMovement.reverse => _entryHeading,
+    TurntableMovement.reverse =>
+      _entryHeading + (travelSign < 0 ? math.pi : 0.0),
   };
 
   /// Eased sideways shift of a sliding platform so far (px); zero for other movements.
@@ -83,7 +98,8 @@ class TurntableRide {
   double get heading => switch (movement) {
     TurntableMovement.rotate => turn.fromHeading + angle,
     TurntableMovement.slide => turn.fromHeading,
-    TurntableMovement.reverse => _entryHeading + _y!.headingAt(_u),
+    TurntableMovement.reverse =>
+      _entryHeading + _y!.headingAt(_safeYHeadingU()),
   };
 
   /// Movement done and the whole tram is off the platform: it joins [exitPath].
@@ -97,13 +113,13 @@ class TurntableRide {
 
   /// Px along [exitPath] where the tram's centre is when [finished].
   double get exitDistance => movement == TurntableMovement.reverse
-      ? entry.reversed.nearest(turn.center).along + _entryLength
+      ? entry.reversed.nearest(turn.center).along + _entryLength * travelSign
       : turn.toAlong + offset;
 
   void advance(double dt, double speed) {
     _elapsed += dt;
     if (movement == TurntableMovement.reverse) {
-      _u += speed * dt;
+      _u += speed.abs() * dt;
     } else {
       offset += speed * dt;
     }
@@ -127,9 +143,23 @@ class TurntableRide {
   }
 
   math.Point<double> _reversed() {
-    final local = _y!.positionAt(_u);
-    final p = _turned(local.x, local.y, _entryHeading);
+    final y = _y!;
+    final span = y.length - _startU;
+    final t = span <= 0 ? 1.0 : ((_u - _startU) / span).clamp(0.0, 1.0);
+    final local = y.positionAt(_u.clamp(0.0, y.length));
+    final adjustedY = local.y - _leadOffset * (1.0 - t);
+    final p = _turned(
+      local.x,
+      adjustedY,
+      _entryHeading + (travelSign < 0 ? math.pi : 0.0),
+    );
     return math.Point(turn.center.x + p.x, turn.center.y + p.y);
+  }
+
+  /// Keeps heading lookups inside the straight Y stem away from the closed-loop seam.
+  double _safeYHeadingU() {
+    final limit = math.max(7.0, _y!.length - 7.0);
+    return _u.clamp(7.0, limit);
   }
 
   static math.Point<double> _turned(double x, double y, double angle) {

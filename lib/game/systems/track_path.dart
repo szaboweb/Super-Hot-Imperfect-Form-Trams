@@ -55,26 +55,52 @@ class TrackPath {
 
   /// Path distance (and how far off the path it is) of the polyline point nearest to [p].
   ({double along, double gap}) nearest(math.Point<double> p) {
-    var bestAlong = 0.0;
-    var bestGap = double.infinity;
+    var best = (along: 0.0, gap: double.infinity);
     for (var i = 1; i < points.length; i++) {
-      final a = points[i - 1];
-      final dx = points[i].x - a.x;
-      final dy = points[i].y - a.y;
-      final lengthSquared = dx * dx + dy * dy;
-      final t = lengthSquared == 0
-          ? 0.0
-          : (((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared).clamp(
-              0.0,
-              1.0,
-            );
-      final gap = p.distanceTo(math.Point(a.x + dx * t, a.y + dy * t));
-      if (gap < bestGap) {
-        bestGap = gap;
-        bestAlong = _cumulative[i - 1] + math.sqrt(lengthSquared) * t;
+      final hit = _segmentNearest(i, p);
+      if (hit.gap < best.gap) best = hit;
+    }
+    return best;
+  }
+
+  /// All distinct passes of this path within [maxGap] px of [p], sorted by `along`.
+  List<({double along, double gap})> crossingsNear(
+    math.Point<double> p, {
+    double maxGap = 4,
+    double minSeparation = 32,
+  }) {
+    final hits = <({double along, double gap})>[];
+    for (var i = 1; i < points.length; i++) {
+      final hit = _segmentNearest(i, p);
+      if (hit.gap > maxGap) continue;
+      final prev = hits.indexWhere(
+        (h) => _alongGap(h.along, hit.along) < minSeparation,
+      );
+      if (prev == -1) {
+        hits.add(hit);
+      } else if (hit.gap < hits[prev].gap) {
+        hits[prev] = hit;
       }
     }
-    return (along: bestAlong, gap: bestGap);
+    hits.sort((a, b) => a.along.compareTo(b.along));
+    return hits;
+  }
+
+  ({double along, double gap}) _segmentNearest(int i, math.Point<double> p) {
+    final a = points[i - 1];
+    final dx = points[i].x - a.x;
+    final dy = points[i].y - a.y;
+    final lenSq = dx * dx + dy * dy;
+    final t = lenSq == 0
+        ? 0.0
+        : (((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq).clamp(0.0, 1.0);
+    final gap = p.distanceTo(math.Point(a.x + dx * t, a.y + dy * t));
+    return (along: _cumulative[i - 1] + math.sqrt(lenSq) * t, gap: gap);
+  }
+
+  double _alongGap(double a, double b) {
+    final diff = (a - b).abs();
+    return isClosed ? math.min(diff, length - diff) : diff;
   }
 
   /// Wraps [distance] into the path (closed) or clamps it to its ends (open).

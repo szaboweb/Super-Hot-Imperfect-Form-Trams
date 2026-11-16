@@ -45,6 +45,9 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   /// Minimum |speed| (px/s) at which braking leaves skid marks.
   static const double skidMinSpeed = 60;
 
+  /// Minimum braking multiplier when brakes are fully overheated (0..1).
+  static const double minBrakeEfficiency = 0.25;
+
   /// -1 (brake/reverse) .. 1 (accelerate)
   double throttle = 0;
 
@@ -56,6 +59,12 @@ class TramComponent extends PositionComponent with KeyboardHandler {
 
   /// 0 (cool) .. 1 (overheated); rises while braking hard.
   double brakeHeat = 0;
+
+  /// True once this tram has crashed; freezes movement and ignores turn signals.
+  bool isCrashed = false;
+
+  /// Current braking multiplier from 1.0 (cool) down to [minBrakeEfficiency] (overheated).
+  double get brakeEfficiency => 1.0 - brakeHeat * (1.0 - minBrakeEfficiency);
 
   /// Called every frame the tram is skidding (braking while moving).
   void Function(Vector2 position, double angle)? onSkid;
@@ -71,8 +80,14 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   /// Seconds until this tram may send another SHIFT signal.
   double _signalCooldown = 0;
 
+  /// Latest screen-space directional input held by the player.
+  math.Point<double>? _desiredDirection;
+
   /// The level's turntable rules; null = no turntables (SHIFT does nothing).
   TurntableSwitchSystem? switches;
+
+  /// Optional provider returning platform centres currently occupied by another tram.
+  Iterable<math.Point<double>> Function()? occupiedPlatformCenters;
 
   /// The turntable ride in progress, null while on a normal path.
   TurntableRide? get ride => _ride;
@@ -80,12 +95,22 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   /// Short name for log lines (the controls label, or AUTO).
   String get label => controls?.label ?? 'AUTO';
 
+  /// Marks this tram as crashed, halting motion and clearing any active turn ride.
+  void markCrashed() {
+    isCrashed = true;
+    speed = 0;
+    throttle = 0;
+    _ride = null;
+  }
+
   /// The tram's own SHIFT signal: puts this tram on the disc it is on right now (any part of
   /// the tram on the disc counts). Presses closer than [TurntableSwitchSystem.signalCooldownSeconds]
   /// to the previous one are ignored. False (logged as MISS) if it is on no disc.
-  bool requestTurn() {
+  bool requestTurn({math.Point<double>? desiredDirection}) {
     final system = switches;
-    if (system == null || _ride != null || speed <= 0) return false;
+    if (system == null || _ride != null || speed == 0 || isCrashed) {
+      return false;
+    }
     final key = controls?.switchLabel ?? 'SHIFT';
     if (_signalCooldown > 0) {
       GameLog.event(
@@ -100,6 +125,8 @@ class TramComponent extends PositionComponent with KeyboardHandler {
       distance: trackDistance,
       speed: speed,
       halfLength: halfLength,
+      desiredDirection: desiredDirection ?? _desiredDirection,
+      occupiedCenters: occupiedPlatformCenters?.call() ?? const [],
     );
     GameLog.event('switch', decision.describe(tramLabel: label, keyLabel: key));
     _ride = decision.ride;
@@ -109,10 +136,11 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
     final controls = this.controls;
-    if (controls == null) return true;
+    if (controls == null || isCrashed) return true;
     throttle = controls.throttleFor(keysPressed);
+    _desiredDirection = controls.desiredDirectionFor(keysPressed);
     if (event is KeyDownEvent && event.logicalKey == controls.switchKey) {
-      requestTurn();
+      requestTurn(desiredDirection: _desiredDirection);
     }
     return true;
   }
@@ -120,10 +148,15 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   @override
   void update(double dt) {
     super.update(dt);
+    if (isCrashed) return;
     _signalCooldown = math.max(0, _signalCooldown - dt);
-    final braking = throttle * speed < 0 && speed.abs() > skidMinSpeed;
-    brakeHeat = (brakeHeat + (braking ? 0.4 : -0.15) * dt).clamp(0.0, 1.0);
-    speed += throttle * acceleration * dt;
+    final isBraking = throttle * speed < 0;
+    final effectiveAccel = isBraking
+        ? acceleration * brakeEfficiency
+        : acceleration;
+    final skidding = isBraking && speed.abs() > skidMinSpeed;
+    brakeHeat = (brakeHeat + (skidding ? 0.4 : -0.15) * dt).clamp(0.0, 1.0);
+    speed += throttle * effectiveAccel * dt;
     speed *= math.pow(drag, dt).toDouble();
     speed = speed.clamp(-maxSpeed / 3, maxSpeed);
     final ride = _ride;
@@ -133,7 +166,7 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     } else {
       _followRide(ride, dt);
     }
-    if (braking) onSkid?.call(position, angle);
+    if (skidding) onSkid?.call(position, angle);
   }
 
   void _followRide(TurntableRide ride, double dt) {
@@ -159,16 +192,34 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     final sprite = this.sprite;
     if (sprite != null) {
       sprite.render(canvas, size: size, overridePaint: pixelArtPaint());
+      if (isCrashed) _renderCrashCross(canvas);
       return;
     }
     // Canvas fallback: used until pixel-art textures exist.
     canvas.drawRRect(
       RRect.fromRectAndRadius(size.toRect(), const Radius.circular(4)),
-      Paint()..color = color,
+      Paint()..color = isCrashed ? const Color(0xFF3A3E48) : color,
     );
+    if (isCrashed) {
+      _renderCrashCross(canvas);
+      return;
+    }
     canvas.drawRect(
       Rect.fromLTWH(2, 2, size.x - 4, 10),
       Paint()..color = const Color(0xFFF3E9D2),
     );
+  }
+
+  void _renderCrashCross(Canvas canvas) {
+    final crossPaint = Paint()
+      ..color = const Color(0xFFFF5A36)
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      const Offset(3, 4),
+      Offset(size.x - 3, size.y - 4),
+      crossPaint,
+    );
+    canvas.drawLine(Offset(size.x - 3, 4), Offset(3, size.y - 4), crossPaint);
   }
 }

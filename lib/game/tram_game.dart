@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
+import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../core/game_log.dart';
 import 'components/atmosphere_component.dart';
@@ -24,8 +25,12 @@ import 'levels/crossover_data.dart';
 import 'levels/level_data.dart';
 import 'levels/level_repository.dart';
 import 'levels/prop_data.dart';
+import 'systems/crash_system.dart';
+import 'systems/score_system.dart';
+import 'systems/spawn_system.dart';
 import 'systems/turntable_movement.dart';
 import 'systems/turntable_turn.dart';
+import 'systems/turntable_turn_builder.dart';
 import 'systems/track_path.dart';
 import 'systems/turntable_switch_system.dart';
 
@@ -40,14 +45,30 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
   /// All trams of the loaded level, in spawn order.
   final List<TramComponent> trams = [];
 
-  /// Whole level visible at once (switch-flipping needs the overview).
-  static final Vector2 visibleSize = Vector2(960, 640);
+  /// Notifies UI widgets when the level crash goal is first satisfied.
+  final ValueNotifier<bool> goalMetNotifier = ValueNotifier<bool>(false);
+
+  /// Minimum viewport extent in world px so small levels are not zoomed too close.
+  static final Vector2 visibleSize = Vector2(1040, 680);
 
   late final LevelData _level;
   late final Map<String, TrackPath> _paths;
   late final GroundComponent _ground;
+  late final SpawnSystem _spawnSystem;
+  late final CrashSystem _crashSystem;
+  late final ScoreSystem _scoreSystem;
+  late final TurntableSwitchSystem _switches;
   final List<({CrossoverData data, List<TurntableTurn> turns})> _crossovers =
       [];
+
+  /// Score and crash-goal state for the active level.
+  ScoreSystem get scoreSystem => _scoreSystem;
+
+  /// Camera visible size covering at least [visibleSize] and the loaded level bounds.
+  Vector2 get effectiveVisibleSize => Vector2(
+    math.max(visibleSize.x, _level.width),
+    math.max(visibleSize.y, _level.height),
+  );
 
   Vector2 get _bounds => Vector2(_level.width, _level.height);
 
@@ -64,8 +85,14 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
     await _buildCanopy();
     await _buildAtmosphereAndHud();
     camera.viewfinder
-      ..visibleGameSize = visibleSize
+      ..visibleGameSize = effectiveVisibleSize
       ..position = Vector2.zero();
+  }
+
+  @override
+  void onRemove() {
+    goalMetNotifier.dispose();
+    super.onRemove();
   }
 
   Future<void> _loadLevel() async {
@@ -84,7 +111,7 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
         data: data,
         turns: [
           for (final l in data.links)
-            TurntableTurn.build(
+            ...TurntableTurnBuilder.buildAll(
               from: _paths[l.from]!,
               to: _paths[l.to]!,
               center: data.center,
@@ -94,6 +121,12 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
         ],
       ));
     }
+    _switches = TurntableSwitchSystem([
+      for (final c in _crossovers) ...c.turns,
+    ]);
+    _spawnSystem = SpawnSystem(_level.spawns);
+    _scoreSystem = ScoreSystem(crashGoal: _level.crashGoal);
+    _crashSystem = CrashSystem(graph: _level.buildGraph(), paths: _paths);
   }
 
   // 1. depth  2. ground
@@ -117,56 +150,54 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
   Future<void> _buildTrack() async {
     await world.addAll([
       for (final path in _paths.values) TrackComponent(path: path),
-    ]);
-    for (final p in _level.props.where((p) => p.type == PropType.signal)) {
-      await world.add(
+      for (final p in _level.props.where((p) => p.type == PropType.signal))
         SignalComponent(
           position: Vector2(p.x, p.y),
           rotationDeg: p.rotationDeg,
           green: p.state != 'red',
         ),
-      );
-    }
+    ]);
   }
 
-  // 4. entities: every spawn of the level becomes a tram (spawn `time` not scheduled yet)
+  // 4. entities: spawns due at t = 0 enter now; delayed spawns enter in update(dt).
   Future<void> _spawnTrams() async {
     trams.clear();
-    for (final spawn in _level.spawns) {
-      final path = _paths[spawn.segment];
-      if (path == null) {
-        throw StateError('Spawn segment "${spawn.segment}" has no geometry');
-      }
-      trams.add(
-        TramComponent(
-          path: path,
-          speed: spawn.speed,
-          controls: spawn.controls,
-          trackDistance: spawn.startDistance,
-          color: Color(spawn.color),
-        )..onSkid = _ground.addSkidMark,
-      );
+    for (final spawn in _spawnSystem.advance(0)) {
+      trams.add(_createTram(spawn));
     }
-    await world.addAll(trams);
+    if (trams.isNotEmpty) await world.addAll(trams);
   }
+
+  TramComponent _createTram(SpawnData spawn) {
+    final path = _paths[spawn.segment];
+    if (path == null) {
+      throw StateError('Spawn segment "${spawn.segment}" has no geometry');
+    }
+    return TramComponent(
+        path: path,
+        speed: spawn.speed,
+        controls: spawn.controls,
+        trackDistance: spawn.startDistance,
+        color: Color(spawn.color),
+      )
+      ..switches = _switches
+      ..occupiedPlatformCenters = _occupiedPlatformCenters
+      ..onSkid = _ground.addSkidMark;
+  }
+
+  Iterable<math.Point<double>> _occupiedPlatformCenters() => [
+    for (final other in trams)
+      if (other.ride != null) other.ride!.turn.center,
+  ];
 
   // 2./3. turntable discs (below the rails), L-rails and switch lights; they need the trams
   Future<void> _buildCrossovers() async {
-    final allTurns = [for (final c in _crossovers) ...c.turns];
-    final switches = TurntableSwitchSystem(allTurns);
-    for (final tram in trams) {
-      tram.switches = switches;
-    }
     for (final c in _crossovers) {
-      final crossover = CrossoverComponent(
-        data: c.data,
-        turns: c.turns,
-        trams: trams,
-      );
+      final cx = CrossoverComponent(data: c.data, turns: c.turns, trams: trams);
       await world.addAll([
-        crossover,
-        TurntableDiscComponent(crossover: crossover),
-        _railFor(crossover),
+        cx,
+        TurntableDiscComponent(crossover: cx),
+        _railFor(cx),
       ]);
     }
   }
@@ -201,7 +232,64 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
       for (final tram in trams) HeadlightComponent(tram: tram),
     ]);
     await camera.viewport.add(
-      HudComponent(trams: trams, paths: _paths.values.toList()),
+      HudComponent(
+        trams: trams,
+        paths: _paths.values.toList(),
+        score: _scoreSystem,
+      ),
     );
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    for (final spawn in _spawnSystem.advance(dt)) {
+      final tram = _createTram(spawn);
+      trams.add(tram);
+      world.addAll([tram, HeadlightComponent(tram: tram)]);
+      GameLog.event(
+        'tram',
+        '${tram.label} spawned at t=${_spawnSystem.elapsedSeconds.toStringAsFixed(2)}s',
+      );
+    }
+    if (trams.isEmpty) return;
+    _stepCrashes();
+  }
+
+  void _stepCrashes() {
+    final result = _crashSystem.step([
+      for (final (i, tram) in trams.indexed)
+        (
+          index: i,
+          label: tram.label,
+          segmentId: tram.path.name,
+          trackDistance: tram.trackDistance,
+          speed: tram.speed,
+          position: math.Point(tram.position.x, tram.position.y),
+          heading: tram.angle,
+          isRidingTurntable: tram.ride != null,
+          isCrashed: tram.isCrashed,
+        ),
+    ]);
+    for (final t in result.transitions) {
+      final tram = trams[t.tramIndex];
+      tram.path = t.nextPath;
+      tram.trackDistance = t.nextDistance;
+      final p = t.nextPath.positionAt(t.nextDistance);
+      tram.position.setValues(p.x, p.y);
+      tram.angle = t.nextPath.headingAt(t.nextDistance);
+    }
+    for (final event in result.crashes) {
+      for (final idx in event.tramIndices) {
+        trams[idx].markCrashed();
+      }
+      GameLog.event('crash', event.description);
+      if (!_scoreSystem.record(event)) continue;
+      goalMetNotifier.value = true;
+      GameLog.event(
+        'level',
+        'Goal reached: ${_scoreSystem.crashCount}/${_scoreSystem.crashGoal} crashes',
+      );
+    }
   }
 }

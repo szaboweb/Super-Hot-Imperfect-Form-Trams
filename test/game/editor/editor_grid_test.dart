@@ -108,4 +108,53 @@ void main() {
     final g = crossingRings()..clear();
     expect(g.isEmpty, isTrue);
   });
+
+  test('toAscii renders all piece glyphs and tram coordinates', () {
+    final g = EditorGrid(cols: 5, rows: 3)
+      ..place(EditorPiece.cornerSE, (col: 0, row: 0))
+      ..place(EditorPiece.straightH, (col: 1, row: 0))
+      ..place(EditorPiece.switchRectangle, (col: 2, row: 0))
+      ..place(EditorPiece.switchCircle, (col: 3, row: 0))
+      ..place(EditorPiece.cornerSW, (col: 4, row: 0))
+      ..place(EditorPiece.straightV, (col: 0, row: 1))
+      ..place(EditorPiece.switchTriangle, (col: 4, row: 1))
+      ..place(EditorPiece.cornerNE, (col: 0, row: 2))
+      ..place(EditorPiece.cornerNW, (col: 4, row: 2));
+    expect(
+      g.toAscii(),
+      '┌─▬◎┐\n'
+      '│...△\n'
+      '└...┘\n'
+      'G:- R:-',
+    );
+    g
+      ..place(EditorPiece.tramGreen, (col: 1, row: 0))
+      ..place(EditorPiece.tramRed, (col: 0, row: 1));
+    expect(g.toAscii().split('\n').last, 'G:2,1 R:1,2');
+  });
+
+  test(
+    'isVerticalRectangle distinguishes horizontal and vertical placement',
+    () {
+      const center = (col: 3, row: 3);
+      final g = EditorGrid()..place(EditorPiece.switchRectangle, center);
+      // Isolated rectangle defaults to horizontal
+      expect(g.isVerticalRectangle(center), isFalse);
+
+      // North + south open without west+east open -> vertical
+      g
+        ..place(EditorPiece.straightV, (col: 3, row: 2))
+        ..place(EditorPiece.straightV, (col: 3, row: 4));
+      expect(g.isVerticalRectangle(center), isTrue);
+
+      // Adding west + east open -> horizontal takes precedence
+      g
+        ..place(EditorPiece.straightH, (col: 2, row: 3))
+        ..place(EditorPiece.straightH, (col: 4, row: 3));
+      expect(g.isVerticalRectangle(center), isFalse);
+
+      // Non-rectangle piece is always false
+      expect(g.isVerticalRectangle((col: 3, row: 2)), isFalse);
+    },
+  );
 }

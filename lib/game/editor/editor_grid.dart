@@ -75,6 +75,26 @@ class EditorGrid {
 
   EditorPiece? railAt(EditorCell c) => _rails[c];
 
+  /// True when [cell] holds a [EditorPiece.switchRectangle] oriented
+  /// vertically (north/south neighbours open, without both west/east open).
+  bool isVerticalRectangle(EditorCell cell) {
+    if (railAt(cell) != EditorPiece.switchRectangle) return false;
+    return !(_isSideOpen(cell, EditorSide.west) &&
+            _isSideOpen(cell, EditorSide.east)) &&
+        _isSideOpen(cell, EditorSide.north) &&
+        _isSideOpen(cell, EditorSide.south);
+  }
+
+  bool _isSideOpen(EditorCell cell, EditorSide side) {
+    final piece = railAt((
+      col: cell.col + side.dCol,
+      row: cell.row + side.dRow,
+    ));
+    if (piece == null) return false;
+    if (piece == EditorPiece.switchRectangle || piece.isCrossing) return true;
+    return piece.sides.contains(side.opposite);
+  }
+
   EditorPiece? tramAt(EditorCell c) {
     for (final e in _trams.entries) {
       if (e.value == c) return e.key;
@@ -172,4 +192,35 @@ class EditorGrid {
   static EditorPiece _pieceByName(Object? name) =>
       EditorPiece.values.asNameMap()[name] ??
       (throw FormatException('Unknown editor piece "$name"'));
+
+  /// Lossless compact ASCII map of rails plus 1-based tram coordinates.
+  String toAscii() {
+    final lines = [
+      for (var row = 0; row < rows; row++)
+        [
+          for (var col = 0; col < cols; col++)
+            _asciiChar(railAt((col: col, row: row))),
+        ].join(),
+      'G:${_tramCoord(EditorPiece.tramGreen)} R:${_tramCoord(EditorPiece.tramRed)}',
+    ];
+    return lines.join('\n');
+  }
+
+  String _tramCoord(EditorPiece tram) {
+    final c = _trams[tram];
+    return c == null ? '-' : '${c.col + 1},${c.row + 1}';
+  }
+
+  static String _asciiChar(EditorPiece? piece) => switch (piece) {
+    EditorPiece.straightH => '─',
+    EditorPiece.straightV => '│',
+    EditorPiece.cornerSE => '┌',
+    EditorPiece.cornerSW => '┐',
+    EditorPiece.cornerNE => '└',
+    EditorPiece.cornerNW => '┘',
+    EditorPiece.switchCircle => '◎',
+    EditorPiece.switchRectangle => '▬',
+    EditorPiece.switchTriangle => '△',
+    EditorPiece.tramGreen || EditorPiece.tramRed || null => '.',
+  };
 }

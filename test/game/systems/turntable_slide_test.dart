@@ -51,4 +51,44 @@ void main() {
     expect(onExit.y, closeTo(ride.position.y, 0.001));
     expect(ride.exitDistance, greaterThan(300 + 48));
   });
+
+  test('buildAll supports sliding in the reversed direction too', () {
+    final turns = TurntableTurn.buildAll(
+      from: lane,
+      to: other,
+      center: const Point(0.0, 0.0),
+      movement: TurntableMovement.slide,
+    );
+    expect(turns.length, 2);
+    final revRide = turns[1].board(lane.reversed, 300 - 40, 160, 28);
+    expect(revRide, isNotNull);
+    while (!revRide!.finished) {
+      revRide.advance(0.01, 160);
+    }
+    expect(revRide.exitPath, same(other.reversed));
+    final onExit = other.reversed.positionAt(revRide.exitDistance);
+    expect(onExit.x, closeTo(revRide.position.x, 0.001));
+    expect(onExit.y, closeTo(revRide.position.y, 0.001));
+  });
+
+  test('buildAll supports same-loop parallel slide', () {
+    final loop = TrackPath(const [
+      Point(-200.0, -32.0),
+      Point(200.0, -32.0),
+      Point(200.0, 32.0),
+      Point(-200.0, 32.0),
+      Point(-200.0, -32.0),
+    ], name: 'ring');
+    final turns = TurntableTurn.buildAll(
+      from: loop,
+      to: loop,
+      center: const Point(0.0, 0.0),
+      movement: TurntableMovement.slide,
+    );
+    expect(turns.length, 4);
+    final ride = turns.first.board(loop, 180, 160, 28);
+    expect(ride, isNotNull);
+    expect(ride!.turn.sweep, closeTo(0, 0.001));
+    expect(ride.exitPath, same(loop.reversed));
+  });
 }

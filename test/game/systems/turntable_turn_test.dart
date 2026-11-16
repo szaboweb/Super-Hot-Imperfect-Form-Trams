@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:super_hot_imperfect_form_trams/game/systems/track_path.dart';
+import 'package:super_hot_imperfect_form_trams/game/systems/turntable_movement.dart';
 import 'package:super_hot_imperfect_form_trams/game/systems/turntable_turn.dart';
 
 void main() {
@@ -87,5 +88,84 @@ void main() {
     }
     expect(lastMoment.angle, closeTo(pi / 2, 0.001));
     expect(lastMoment.position.y, closeTo(0, 0.5));
+  });
+
+  test('reverse-gear (speed < 0) boarding & completion works on rotate', () {
+    expect(right.board(north, 300 + 80, -160, 28), isNull);
+    expect(right.board(north, 300 - 80, -160, 28), isNull);
+    for (final startDistance in [300 + 40.0, 300 - 40.0]) {
+      final ride = right.board(north, startDistance, -160, 28)!;
+      expect(
+        ride.position.distanceTo(north.positionAt(startDistance)),
+        lessThanOrEqualTo(0.5),
+      );
+      var guard = 0;
+      while (!ride.finished && guard++ < 1000) {
+        ride.advance(0.01, -160);
+      }
+      expect(ride.finished, isTrue);
+      expect(ride.exitPath, same(east));
+      expect(ride.angle, closeTo(pi / 2, 0.001));
+      expect(ride.heading, closeTo(east.headingAt(ride.exitDistance), 0.01));
+      expect(
+        ride.position.distanceTo(east.positionAt(ride.exitDistance)),
+        lessThanOrEqualTo(0.5),
+      );
+      expect(ride.exitDistance, lessThan(300));
+    }
+  });
+
+  test('reverse-gear (speed < 0) boarding & completion works on slide', () {
+    final parallel = TrackPath(const [Point(60.0, 300.0), Point(60.0, -300.0)]);
+    final slideTurn = TurntableTurn.build(
+      from: north,
+      to: parallel,
+      center: center,
+      movement: TurntableMovement.slide,
+    );
+    final ride = slideTurn.board(north, 300 + 40, -160, 28)!;
+    expect(
+      ride.position.distanceTo(north.positionAt(300 + 40)),
+      lessThanOrEqualTo(0.5),
+    );
+    var guard = 0;
+    while (!ride.finished && guard++ < 1000) {
+      ride.advance(0.01, -160);
+    }
+    expect(ride.finished, isTrue);
+    expect(ride.exitPath, same(parallel));
+    expect(ride.slideShift.x, closeTo(60, 0.001));
+    expect(ride.heading, closeTo(0, 0.01));
+    expect(
+      ride.position.distanceTo(parallel.positionAt(ride.exitDistance)),
+      lessThanOrEqualTo(0.5),
+    );
+  });
+
+  test('reverse-gear (speed < 0) boarding & completion works on reverse', () {
+    final reverseTurn = TurntableTurn.build(
+      from: north,
+      to: north,
+      center: center,
+      movement: TurntableMovement.reverse,
+    );
+    for (final startDistance in [300 + 40.0, 300 - 40.0]) {
+      final ride = reverseTurn.board(north, startDistance, -160, 28)!;
+      expect(
+        ride.position.distanceTo(north.positionAt(startDistance)),
+        lessThanOrEqualTo(0.5),
+      );
+      var guard = 0;
+      while (!ride.finished && guard++ < 4000) {
+        ride.advance(0.01, -160);
+      }
+      expect(ride.finished, isTrue);
+      expect(ride.exitPath, same(north.reversed));
+      expect(cos(ride.heading), lessThan(-0.9));
+      expect(
+        ride.position.distanceTo(north.reversed.positionAt(ride.exitDistance)),
+        lessThanOrEqualTo(0.5),
+      );
+    }
   });
 }

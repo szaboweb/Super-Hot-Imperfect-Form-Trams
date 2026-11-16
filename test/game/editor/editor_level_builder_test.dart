@@ -3,6 +3,9 @@ import 'package:super_hot_imperfect_form_trams/game/editor/editor_grid.dart';
 import 'package:super_hot_imperfect_form_trams/game/editor/editor_level_builder.dart';
 import 'package:super_hot_imperfect_form_trams/game/editor/editor_piece.dart';
 import 'package:super_hot_imperfect_form_trams/game/levels/level_data.dart';
+import 'package:super_hot_imperfect_form_trams/game/systems/track_path.dart';
+import 'package:super_hot_imperfect_form_trams/game/systems/turntable_movement.dart';
+import 'package:super_hot_imperfect_form_trams/game/systems/turntable_turn_builder.dart';
 
 import 'editor_sample_layouts.dart';
 
@@ -90,5 +93,167 @@ void main() {
       ..place(EditorPiece.switchRectangle, (col: 6, row: 2));
     final result = builder.build(g);
     expect(result.errors.single, contains('Téglalap'));
+  });
+
+  test('duplicate rectangle switch on the same lane pair is an error', () {
+    final g = EditorGrid();
+    drawRing(g, 2, 1, 8, 3);
+    drawRing(g, 2, 4, 8, 6);
+    g
+      ..place(EditorPiece.switchRectangle, (col: 5, row: 3))
+      ..place(EditorPiece.switchRectangle, (col: 5, row: 4))
+      ..place(EditorPiece.tramGreen, (col: 3, row: 1))
+      ..place(EditorPiece.tramRed, (col: 3, row: 6));
+    final result = builder.build(g);
+    expect(result.isValid, isFalse);
+    expect(
+      result.errors.any((e) => e.contains('már van egy téglalap kitérő')),
+      isTrue,
+    );
+  });
+
+  test('3-ring chain with opposite and same links reconciles cleanly', () {
+    final g = EditorGrid();
+    drawRing(g, 2, 0, 12, 2);
+    drawRing(g, 2, 3, 12, 9);
+    drawRing(g, 4, 4, 10, 7);
+    g
+      ..place(EditorPiece.switchRectangle, (col: 7, row: 2))
+      ..place(EditorPiece.switchRectangle, (col: 5, row: 4))
+      ..place(EditorPiece.tramGreen, (col: 3, row: 0))
+      ..place(EditorPiece.tramRed, (col: 3, row: 9));
+    final result = builder.build(g);
+    expect(result.errors, isEmpty);
+    expect(result.level.validate(), isEmpty);
+  });
+
+  test('odd conflicting 3-ring cycle fails with rectOpposite', () {
+    final g = EditorGrid();
+    drawRing(g, 1, 1, 6, 4);
+    drawRing(g, 7, 1, 12, 4);
+    drawRing(g, 1, 5, 12, 8);
+    g
+      ..place(EditorPiece.switchRectangle, (col: 6, row: 2))
+      ..place(EditorPiece.switchRectangle, (col: 3, row: 4))
+      ..place(EditorPiece.switchRectangle, (col: 9, row: 4))
+      ..place(EditorPiece.tramGreen, (col: 2, row: 1))
+      ..place(EditorPiece.tramRed, (col: 8, row: 1));
+    final result = builder.build(g);
+    expect(result.isValid, isFalse);
+    expect(result.errors.length, 1);
+    expect(result.errors.single, contains('ellentétes irányú'));
+  });
+
+  test('two adjacent circle switches (< 96 px) fail with switchOverlap', () {
+    final g = EditorGrid();
+    drawRing(g, 2, 1, 7, 5);
+    drawRing(g, 4, 2, 5, 7);
+    g
+      ..place(EditorPiece.switchCircle, (col: 4, row: 5))
+      ..place(EditorPiece.switchCircle, (col: 5, row: 5))
+      ..place(EditorPiece.tramGreen, (col: 3, row: 1))
+      ..place(EditorPiece.tramRed, (col: 4, row: 7));
+    final result = builder.build(g);
+    expect(result.isValid, isFalse);
+    expect(result.errors.any((e) => e.contains('Átfedő váltók')), isTrue);
+  });
+
+  test('two adjacent rectangle switches (< 96 px) fail with switchOverlap', () {
+    final g = EditorGrid();
+    drawRing(g, 2, 1, 8, 3);
+    drawRing(g, 2, 4, 8, 6);
+    g
+      ..place(EditorPiece.switchRectangle, (col: 4, row: 3))
+      ..place(EditorPiece.switchRectangle, (col: 5, row: 3))
+      ..place(EditorPiece.tramGreen, (col: 3, row: 1))
+      ..place(EditorPiece.tramRed, (col: 3, row: 6));
+    final result = builder.build(g);
+    expect(result.isValid, isFalse);
+    expect(result.errors.any((e) => e.contains('Átfedő váltók')), isTrue);
+  });
+
+  test('rectangle adjacent to circle or triangle fails with switchOverlap', () {
+    for (final crossing in [
+      EditorPiece.switchCircle,
+      EditorPiece.switchTriangle,
+    ]) {
+      final g = EditorGrid();
+      drawRing(g, 2, 1, 8, 3);
+      drawRing(g, 0, 0, 6, 4);
+      g
+        ..place(EditorPiece.switchCircle, (col: 6, row: 1))
+        ..place(crossing, (col: 6, row: 3))
+        ..place(EditorPiece.switchRectangle, (col: 5, row: 3))
+        ..place(EditorPiece.tramGreen, (col: 3, row: 1))
+        ..place(EditorPiece.tramRed, (col: 2, row: 4));
+      final result = builder.build(g);
+      expect(result.isValid, isFalse);
+      expect(result.json, isNull);
+      expect(result.errors.any((e) => e.contains('Átfedő váltók')), isTrue);
+    }
+  });
+
+  test('two unlinked loops fail with disconnectedTrack', () {
+    final g = EditorGrid();
+    drawRing(g, 1, 1, 3, 3);
+    drawRing(g, 5, 1, 7, 3);
+    g
+      ..place(EditorPiece.tramGreen, (col: 2, row: 1))
+      ..place(EditorPiece.tramRed, (col: 6, row: 1));
+    final result = builder.build(g);
+    expect(result.isValid, isFalse);
+    expect(result.errors.any((e) => e.contains('Különálló pályarész')), isTrue);
+  });
+
+  test('crossing loops joined only by switchTriangle fail disconnected', () {
+    final g = EditorGrid();
+    drawRing(g, 1, 1, 5, 5);
+    drawRing(g, 3, 3, 7, 7);
+    g
+      ..place(EditorPiece.switchTriangle, (col: 5, row: 3))
+      ..place(EditorPiece.switchTriangle, (col: 3, row: 5))
+      ..place(EditorPiece.tramGreen, (col: 2, row: 1))
+      ..place(EditorPiece.tramRed, (col: 6, row: 7));
+    final result = builder.build(g);
+    expect(result.isValid, isFalse);
+    expect(result.errors.any((e) => e.contains('Különálló pályarész')), isTrue);
+  });
+
+  test('rectangle next to crossing never emits 32px or 91px slide', () {
+    final noLane = crossingRings()
+      ..place(EditorPiece.switchRectangle, (col: 7, row: 4));
+    final rejected = builder.build(noLane);
+    expect(rejected.isValid, isFalse);
+    expect(rejected.json, isNull);
+    expect(rejected.errors.any((e) => e.contains('Téglalap kitérő')), isTrue);
+
+    final valid = EditorGrid();
+    drawRing(valid, 1, 1, 2, 3);
+    drawRing(valid, 3, 1, 4, 3);
+    valid
+      ..place(EditorPiece.switchRectangle, (col: 2, row: 2))
+      ..place(EditorPiece.tramGreen, (col: 1, row: 1))
+      ..place(EditorPiece.tramRed, (col: 4, row: 1));
+    final built = builder.build(valid);
+    expect(built.isValid, isTrue);
+    final level = built.level;
+    final paths = {
+      for (final s in level.segments) s.id: TrackPath(s.points, name: s.id),
+    };
+    final rect = level.crossovers.single;
+    final turns = [
+      for (final l in rect.links)
+        ...TurntableTurnBuilder.buildAll(
+          from: paths[l.from]!,
+          to: paths[l.to]!,
+          center: rect.center,
+          radius: rect.radius,
+          movement: TurntableMovement.slide,
+        ),
+    ];
+    expect(turns, isNotEmpty);
+    for (final t in turns) {
+      expect(t.slideDistance, inInclusiveRange(54.0, 70.0));
+    }
   });
 }
