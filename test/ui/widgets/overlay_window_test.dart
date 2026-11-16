@@ -133,6 +133,8 @@ void main() {
 
     GameLog.event('editor', 'Szerkesztő üzenet');
     GameLog.event('tram', 'Villamos elindult');
+    GameLog.event('crash', 'Ütközés történt');
+    GameLog.event('input', 'StickyKeys kikapcsolva');
 
     await tester.pumpWidget(
       const MaterialApp(
@@ -146,14 +148,16 @@ void main() {
       ),
     );
 
-    expect(find.text('Napló (2)'), findsOneWidget);
+    expect(find.text('Napló (4)'), findsOneWidget);
     expect(find.text('Szerkesztő üzenet'), findsOneWidget);
     expect(find.text('Villamos elindult'), findsOneWidget);
+    expect(find.text('Ütközés történt'), findsOneWidget);
+    expect(find.text('StickyKeys kikapcsolva'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('log_filter_editor')));
     await tester.pump();
 
-    expect(find.text('Napló (1/2)'), findsOneWidget);
+    expect(find.text('Napló (1/4)'), findsOneWidget);
     expect(find.text('Szerkesztő üzenet'), findsOneWidget);
     expect(find.text('Villamos elindult'), findsNothing);
 
@@ -162,10 +166,20 @@ void main() {
     expect(copiedText, contains('Szerkesztő üzenet'));
     expect(copiedText, isNot(contains('Villamos elindult')));
 
+    await tester.tap(find.byKey(const ValueKey('log_filter_crash')));
+    await tester.pump();
+    expect(find.text('Napló (1/4)'), findsOneWidget);
+    expect(find.text('Ütközés történt'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('log_filter_input')));
+    await tester.pump();
+    expect(find.text('Napló (1/4)'), findsOneWidget);
+    expect(find.text('StickyKeys kikapcsolva'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('log_filter_all')));
     await tester.pump();
 
-    expect(find.text('Napló (2)'), findsOneWidget);
+    expect(find.text('Napló (4)'), findsOneWidget);
     expect(find.text('Szerkesztő üzenet'), findsOneWidget);
     expect(find.text('Villamos elindult'), findsOneWidget);
   });

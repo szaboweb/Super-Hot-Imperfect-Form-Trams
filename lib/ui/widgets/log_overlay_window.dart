@@ -27,6 +27,8 @@ class _LogOverlayWindowState extends State<LogOverlayWindow> {
     'editor',
     'switch',
     'tram',
+    'crash',
+    'input',
     'level',
   ];
 
@@ -281,6 +283,8 @@ Color _categoryColor(String? category) => switch (category) {
   'editor' => const Color(0xFFF59E0B),
   'switch' => const Color(0xFF38BDF8),
   'tram' => const Color(0xFF4ADE80),
+  'crash' => const Color(0xFFF87171),
+  'input' => const Color(0xFF2DD4BF),
   'level' => const Color(0xFFA78BFA),
   _ => const Color(0xFF94A3B8),
 };
