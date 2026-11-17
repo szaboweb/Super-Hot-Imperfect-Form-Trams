@@ -9,7 +9,11 @@ import '../levels/crossover_data.dart';
 import '../systems/turntable_movement.dart';
 import '../systems/turntable_ride.dart';
 import '../systems/turntable_turn.dart';
+import 'slide_rail_component.dart';
+import 'track_component.dart';
 import 'tram_component.dart';
+import 'turntable_rail_component.dart';
+import 'y_rail_component.dart';
 
 /// Layer 3 (track): one turntable crossover: signal light and the disc angle that
 /// the disc and its L-rail follow. The signal comes from the tram (its own SHIFT, see
@@ -60,6 +64,13 @@ class CrossoverComponent extends PositionComponent {
   TramControls? lastUser;
 
   TramComponent? _rider;
+
+  /// Builds the moving rail component matching [data]'s platform movement mode.
+  TrackComponent buildPlatformRail() => switch (data.movement) {
+    TurntableMovement.rotate => TurntableRailComponent(crossover: this),
+    TurntableMovement.slide => SlideRailComponent(crossover: this),
+    TurntableMovement.reverse => YRailComponent(crossover: this),
+  };
 
   @override
   void update(double dt) {

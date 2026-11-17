@@ -1,8 +1,11 @@
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flame/components.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:super_hot_imperfect_form_trams/game/components/tram_component.dart';
+import 'package:super_hot_imperfect_form_trams/game/graphics/render_layer.dart';
+import 'package:super_hot_imperfect_form_trams/game/systems/track_graph.dart';
 import 'package:super_hot_imperfect_form_trams/game/systems/track_path.dart';
 import 'package:super_hot_imperfect_form_trams/game/systems/turntable_switch_system.dart';
 import 'package:super_hot_imperfect_form_trams/game/systems/turntable_turn.dart';
@@ -88,5 +91,48 @@ void main() {
     final recorder = PictureRecorder();
     tram.render(Canvas(recorder));
     recorder.endRecording().dispose();
+  });
+
+  test('markCrashed with river hazard drops into depth and shrinks scale', () {
+    final tram = TramComponent(path: path, trackDistance: 100, speed: 150);
+    tram.markCrashed(hazard: TrackEnd.river);
+
+    expect(tram.isCrashed, isTrue);
+    expect(tram.crashHazard, TrackEnd.river);
+    expect(tram.priority, RenderLayer.depth.priority + 5);
+
+    tram.update(0.3);
+    expect(tram.scale.x, lessThan(1.0));
+    expect(tram.scale.x, greaterThan(0.62));
+    final midRecorder = PictureRecorder();
+    tram.render(Canvas(midRecorder));
+    midRecorder.endRecording().dispose();
+
+    tram.update(0.5);
+    expect(tram.scale.x, closeTo(0.62, 0.005));
+    final endRecorder = PictureRecorder();
+    tram.render(Canvas(endRecorder));
+    endRecorder.endRecording().dispose();
+  });
+
+  test('onTurnHit fires on valid SHIFT hit and stays silent on miss', () {
+    final east = TrackPath(const [Point(-300, -250), Point(300, -250)]);
+    final turn = TurntableTurn.build(
+      from: path,
+      to: east,
+      center: const Point(0, -250),
+    );
+    final hits = <Vector2>[];
+    final tram = TramComponent(path: path, trackDistance: 10, speed: 120)
+      ..switches = TurntableSwitchSystem([turn])
+      ..onTurnHit = (pos) => hits.add(pos.clone());
+
+    expect(tram.requestTurn(), isFalse);
+    expect(hits, isEmpty);
+
+    tram.update(0.5); // clears 1/3s signal cooldown
+    tram.trackDistance = 240;
+    expect(tram.requestTurn(), isTrue);
+    expect(hits, hasLength(1));
   });
 }

@@ -8,6 +8,7 @@ import '../../core/game_log.dart';
 import '../../input/tram_controls.dart';
 import '../graphics/pixel_art.dart';
 import '../graphics/render_layer.dart';
+import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
 import '../systems/turntable_ride.dart';
 import '../systems/turntable_switch_system.dart';
@@ -48,6 +49,9 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   /// Minimum braking multiplier when brakes are fully overheated (0..1).
   static const double minBrakeEfficiency = 0.25;
 
+  /// Duration in seconds of the river/pit submersion animation.
+  static const double sinkDurationSec = 0.65;
+
   /// -1 (brake/reverse) .. 1 (accelerate)
   double throttle = 0;
 
@@ -63,11 +67,17 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   /// True once this tram has crashed; freezes movement and ignores turn signals.
   bool isCrashed = false;
 
+  /// Hazard that caused this tram to crash, or null when intact / collided on track.
+  TrackEnd? crashHazard;
+
   /// Current braking multiplier from 1.0 (cool) down to [minBrakeEfficiency] (overheated).
   double get brakeEfficiency => 1.0 - brakeHeat * (1.0 - minBrakeEfficiency);
 
   /// Called every frame the tram is skidding (braking while moving).
   void Function(Vector2 position, double angle)? onSkid;
+
+  /// Called when a SHIFT signal successfully boards a turntable platform.
+  void Function(Vector2 position)? onTurnHit;
 
   /// Body colour of the Canvas fallback; also used by the HUD and mini-map.
   final Color color;
@@ -76,11 +86,9 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   final TramControls? controls;
 
   TurntableRide? _ride;
-
-  /// Seconds until this tram may send another SHIFT signal.
   double _signalCooldown = 0;
-
-  /// Latest screen-space directional input held by the player.
+  double _sinkProgress = 0;
+  double _fallSpeed = 0;
   math.Point<double>? _desiredDirection;
 
   /// The level's turntable rules; null = no turntables (SHIFT does nothing).
@@ -95,12 +103,19 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   /// Short name for log lines (the controls label, or AUTO).
   String get label => controls?.label ?? 'AUTO';
 
-  /// Marks this tram as crashed, halting motion and clearing any active turn ride.
-  void markCrashed() {
+  /// Marks this tram as crashed, halting motion or starting a river plunge.
+  void markCrashed({TrackEnd? hazard}) {
     isCrashed = true;
-    speed = 0;
+    crashHazard = hazard;
     throttle = 0;
     _ride = null;
+    if (hazard == TrackEnd.river) {
+      _fallSpeed = speed.clamp(-140.0, 140.0) * 0.35;
+      priority = RenderLayer.depth.priority + 5;
+    } else {
+      _fallSpeed = 0;
+    }
+    speed = 0;
   }
 
   /// The tram's own SHIFT signal: puts this tram on the disc it is on right now (any part of
@@ -130,6 +145,7 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     );
     GameLog.event('switch', decision.describe(tramLabel: label, keyLabel: key));
     _ride = decision.ride;
+    if (decision.isHit) onTurnHit?.call(position);
     return decision.isHit;
   }
 
@@ -148,7 +164,10 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   @override
   void update(double dt) {
     super.update(dt);
-    if (isCrashed) return;
+    if (isCrashed) {
+      _advanceSink(dt);
+      return;
+    }
     _signalCooldown = math.max(0, _signalCooldown - dt);
     final isBraking = throttle * speed < 0;
     final effectiveAccel = isBraking
@@ -169,6 +188,15 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     if (skidding) onSkid?.call(position, angle);
   }
 
+  void _advanceSink(double dt) {
+    if (crashHazard != TrackEnd.river || _sinkProgress >= 1.0) return;
+    _sinkProgress = (_sinkProgress + dt / sinkDurationSec).clamp(0.0, 1.0);
+    final drift = _fallSpeed * (1.0 - _sinkProgress) * dt;
+    position.add(Vector2(math.sin(angle) * drift, -math.cos(angle) * drift));
+    scale.setAll(1.0 - 0.38 * _sinkProgress);
+    angle += 0.55 * dt;
+  }
+
   void _followRide(TurntableRide ride, double dt) {
     ride.advance(dt, speed);
     final p = ride.position;
@@ -187,27 +215,67 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     angle = path.headingAt(trackDistance);
   }
 
+  static const Radius _hullRadius = Radius.circular(4);
+
   @override
   void render(Canvas canvas) {
+    final hull = size.toRect();
+    final hullRRect = RRect.fromRectAndRadius(hull, _hullRadius);
+    if (crashHazard != TrackEnd.river) {
+      canvas.drawRRect(
+        hullRRect.shift(const Offset(3, 4)),
+        Paint()..color = const Color(0x50000000),
+      );
+    }
+    _renderHull(canvas, hullRRect);
+    if (crashHazard == TrackEnd.river) {
+      _renderRiverSubmersion(canvas, hull, hullRRect);
+    } else if (isCrashed) {
+      _renderCrashCross(canvas);
+    }
+  }
+
+  void _renderHull(Canvas canvas, RRect hullRRect) {
     final sprite = this.sprite;
     if (sprite != null) {
       sprite.render(canvas, size: size, overridePaint: pixelArtPaint());
-      if (isCrashed) _renderCrashCross(canvas);
       return;
     }
-    // Canvas fallback: used until pixel-art textures exist.
+    final isSurfaceWreck = isCrashed && crashHazard != TrackEnd.river;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(size.toRect(), const Radius.circular(4)),
-      Paint()..color = isCrashed ? const Color(0xFF3A3E48) : color,
+      hullRRect,
+      Paint()..color = isSurfaceWreck ? const Color(0xFF3A3E48) : color,
     );
-    if (isCrashed) {
-      _renderCrashCross(canvas);
-      return;
+    if (!isCrashed) {
+      canvas.drawRect(
+        Rect.fromLTWH(2, 2, size.x - 4, 10),
+        Paint()..color = const Color(0xFFF3E9D2),
+      );
     }
-    canvas.drawRect(
-      Rect.fromLTWH(2, 2, size.x - 4, 10),
-      Paint()..color = const Color(0xFFF3E9D2),
-    );
+  }
+
+  void _renderRiverSubmersion(Canvas canvas, Rect hull, RRect hullRRect) {
+    final waterTint = const Color(0xFF061426)
+        .withValues(alpha: 0.72 * _sinkProgress);
+    canvas.drawRRect(hullRRect, Paint()..color = waterTint);
+    if (_sinkProgress < 1.0) {
+      final expand = 18 * _sinkProgress;
+      final ripple = Rect.fromCenter(
+        center: hull.center,
+        width: size.x + expand,
+        height: size.y + expand,
+      );
+      canvas.drawOval(
+        ripple,
+        Paint()
+          ..color = const Color(0xFF78ECFF)
+              .withValues(alpha: 0.8 * (1.0 - _sinkProgress))
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    } else {
+      _renderCrashCross(canvas);
+    }
   }
 
   void _renderCrashCross(Canvas canvas) {
