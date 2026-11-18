@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'gate_system.dart';
 import 'track_graph.dart';
 import 'track_path.dart';
 import 'turntable_movement.dart';
@@ -33,6 +34,7 @@ class TramAiSystem {
     required this.graph,
     required this.paths,
     required this.switches,
+    this.gates,
     this.patrolSwitchIntervalSec = 4.0,
   });
 
@@ -63,6 +65,9 @@ class TramAiSystem {
 
   /// Turntable switch catalog used to evaluate boardable turns.
   final TurntableSwitchSystem switches;
+
+  /// Optional track-barrier gate system opened ahead of AI trams via SHIFT.
+  final GateSystem? gates;
 
   /// Cooldown (seconds) between routine patrol switches of one AI tram.
   final double patrolSwitchIntervalSec;
@@ -107,6 +112,20 @@ class TramAiSystem {
     Iterable<math.Point<double>> occupiedCenters,
   ) {
     var throttle = _cruiseThrottle(tram.speed, tram.cruiseSpeed);
+    final gateDist = gates?.closedGateDistanceAhead(
+      tram.path,
+      tram.trackDistance,
+      tram.speed,
+    );
+    if (gateDist != null && gateDist <= 95.0) {
+      if (!_switchCooldowns.containsKey(tram.index)) {
+        _switchCooldowns[tram.index] = _evasiveCooldownSec;
+        return (throttle: throttle, shouldTurn: true, desiredDirection: null);
+      }
+      if (gateDist <= panicBrakeLookaheadPx) {
+        throttle = tram.speed >= 0 ? -1.0 : 1.0;
+      }
+    }
     final hazardDist = _hazardDistanceAhead(tram);
     final candidates = _boardableTurns(tram, occupiedCenters);
 

@@ -3,18 +3,37 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../game/editor/editor_piece.dart';
+import 'editor_special_painter.dart';
 
 /// Paints a single [EditorPiece] centred inside [size] using pure Canvas.
 class EditorPiecePainter extends CustomPainter {
+  /// Creates a Canvas painter for an editor palette or grid [piece].
   const EditorPiecePainter({
     required this.piece,
     this.dim = false,
     this.verticalRectangle = false,
+    this.verticalInline = false,
+    this.bufferSide = EditorSide.west,
+    this.wyeStemSide = EditorSide.south,
   });
 
+  /// Piece kind to render.
   final EditorPiece piece;
+
+  /// Whether to render dimmed (e.g., ghosted piece under drag).
   final bool dim;
+
+  /// Legacy orientation flag for vertical rectangle switches.
   final bool verticalRectangle;
+
+  /// Orientation flag for vertical auto-oriented inline rails.
+  final bool verticalInline;
+
+  /// Edge from which a spur enters a buffer stop.
+  final EditorSide bufferSide;
+
+  /// Stem edge for a Y-switch (`null` renders a 4-way wye junction).
+  final EditorSide? wyeStemSide;
 
   @override
   void paint(Canvas canvas, Size size) => drawEditorPiece(
@@ -23,13 +42,19 @@ class EditorPiecePainter extends CustomPainter {
     piece,
     dim: dim,
     verticalRectangle: verticalRectangle,
+    verticalInline: verticalInline,
+    bufferSide: bufferSide,
+    wyeStemSide: wyeStemSide,
   );
 
   @override
   bool shouldRepaint(covariant EditorPiecePainter old) =>
       old.piece != piece ||
       old.dim != dim ||
-      old.verticalRectangle != verticalRectangle;
+      old.verticalRectangle != verticalRectangle ||
+      old.verticalInline != verticalInline ||
+      old.bufferSide != bufferSide ||
+      old.wyeStemSide != wyeStemSide;
 }
 
 /// Draws [piece] into [canvas] within `Offset.zero & size` (pure Canvas, no assets).
@@ -39,126 +64,139 @@ void drawEditorPiece(
   EditorPiece piece, {
   bool dim = false,
   bool verticalRectangle = false,
+  bool verticalInline = false,
+  EditorSide bufferSide = EditorSide.west,
+  EditorSide? wyeStemSide = EditorSide.south,
 }) {
   final alpha = dim ? 0.45 : 1.0;
+  final isVertical = verticalInline || verticalRectangle;
   if (piece.isTram) {
     _drawTram(canvas, size, piece == EditorPiece.tramGreen, alpha);
     return;
   }
-  if (piece.isSwitch) {
-    _drawSwitch(
+  if (_isSpecialPiece(piece)) {
+    drawSpecialEditorPiece(
       canvas,
       size,
       piece,
       alpha,
-      verticalRectangle: verticalRectangle,
+      isVertical: isVertical,
+      bufferSide: bufferSide,
+      wyeStemSide: wyeStemSide,
     );
+    return;
+  }
+  if (piece.isSwitch) {
+    _drawSwitch(canvas, size, piece, alpha, isVertical: isVertical);
     return;
   }
   if (piece == EditorPiece.straightH || piece == EditorPiece.straightV) {
-    _drawStraight(canvas, size, piece == EditorPiece.straightH, alpha);
+    drawStraightEditorRail(canvas, size, piece == EditorPiece.straightH, alpha);
     return;
   }
-  _drawCorner(canvas, size, piece, alpha);
+  drawCornerEditorRail(canvas, size, piece, alpha);
 }
 
-void _drawStraight(Canvas canvas, Size size, bool horizontal, double alpha) {
+bool _isSpecialPiece(EditorPiece piece) =>
+    piece == EditorPiece.crossing ||
+    piece == EditorPiece.bufferStop ||
+    piece == EditorPiece.gate ||
+    piece == EditorPiece.railIce ||
+    piece == EditorPiece.railMelted ||
+    piece == EditorPiece.switchY;
+
+/// Draws sleepers and twin steel rails across [size] in [horizontal] or vertical orientation.
+void drawStraightEditorRail(
+  Canvas canvas,
+  Size size,
+  bool horizontal,
+  double alpha,
+) {
   final w = size.width;
   final h = size.height;
-  final sleeperPaint = Paint()
+  final u = math.min(w, h);
+  final sleeper = Paint()
     ..color = const Color(0xFF5D4B3B).withValues(alpha: alpha)
-    ..strokeWidth = math.max(2, math.min(w, h) * 0.06);
-  final railPaint = Paint()
+    ..strokeWidth = math.max(2, u * 0.06);
+  final rail = Paint()
     ..color = const Color(0xFFD0D6DE).withValues(alpha: alpha)
-    ..strokeWidth = math.max(1.5, math.min(w, h) * 0.05)
-    ..strokeCap = StrokeCap.butt;
-
-  final gauge = (horizontal ? h : w) * 0.16;
-  const sleepers = 4;
-  for (var i = 0; i < sleepers; i++) {
-    final t = (i + 0.5) / sleepers;
-    if (horizontal) {
-      final x = w * t;
-      canvas.drawLine(
-        Offset(x, h * 0.5 - gauge * 1.6),
-        Offset(x, h * 0.5 + gauge * 1.6),
-        sleeperPaint,
-      );
-    } else {
-      final y = h * t;
-      canvas.drawLine(
-        Offset(w * 0.5 - gauge * 1.6, y),
-        Offset(w * 0.5 + gauge * 1.6, y),
-        sleeperPaint,
-      );
-    }
+    ..strokeWidth = math.max(1.5, u * 0.05);
+  final g = (horizontal ? h : w) * 0.16;
+  for (var i = 0; i < 4; i++) {
+    final t = (i + 0.5) / 4;
+    final p1 = horizontal
+        ? Offset(w * t, h * 0.5 - g * 1.6)
+        : Offset(w * 0.5 - g * 1.6, h * t);
+    final p2 = horizontal
+        ? Offset(w * t, h * 0.5 + g * 1.6)
+        : Offset(w * 0.5 + g * 1.6, h * t);
+    canvas.drawLine(p1, p2, sleeper);
   }
-  if (horizontal) {
-    canvas.drawLine(
-      Offset(0, h * 0.5 - gauge),
-      Offset(w, h * 0.5 - gauge),
-      railPaint,
-    );
-    canvas.drawLine(
-      Offset(0, h * 0.5 + gauge),
-      Offset(w, h * 0.5 + gauge),
-      railPaint,
-    );
-  } else {
-    canvas.drawLine(
-      Offset(w * 0.5 - gauge, 0),
-      Offset(w * 0.5 - gauge, h),
-      railPaint,
-    );
-    canvas.drawLine(
-      Offset(w * 0.5 + gauge, 0),
-      Offset(w * 0.5 + gauge, h),
-      railPaint,
+  for (final s in const [-1.0, 1.0]) {
+    final p1 = horizontal
+        ? Offset(0, h * 0.5 + s * g)
+        : Offset(w * 0.5 + s * g, 0);
+    final p2 = horizontal
+        ? Offset(w, h * 0.5 + s * g)
+        : Offset(w * 0.5 + s * g, h);
+    canvas.drawLine(p1, p2, rail);
+  }
+}
+
+/// Draws a 90-degree corner rail [piece] with optional sleepers.
+void drawCornerEditorRail(
+  Canvas canvas,
+  Size size,
+  EditorPiece piece,
+  double alpha, {
+  bool drawSleepers = true,
+}) {
+  final cx = size.width * 0.5;
+  final cy = size.height * 0.5;
+  final r = math.min(size.width, size.height) * 0.5;
+  final g = r * 0.32;
+  final (pivot, startAngle) = switch (piece) {
+    EditorPiece.cornerNE => (Offset(cx + r, cy - r), math.pi * 0.5),
+    EditorPiece.cornerNW => (Offset(cx - r, cy - r), 0.0),
+    EditorPiece.cornerSE => (Offset(cx + r, cy + r), math.pi),
+    EditorPiece.cornerSW => (Offset(cx - r, cy + r), math.pi * 1.5),
+    _ => (Offset(cx - r, cy - r), 0.0),
+  };
+  if (drawSleepers) _drawCornerSleepers(canvas, pivot, r, g, startAngle, alpha);
+  final rail = Paint()
+    ..color = const Color(0xFFD0D6DE).withValues(alpha: alpha)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = math.max(1.5, r * 0.1);
+  for (final rad in [r - g, r + g]) {
+    canvas.drawArc(
+      Rect.fromCircle(center: pivot, radius: rad),
+      startAngle,
+      math.pi * 0.5,
+      false,
+      rail,
     );
   }
 }
 
-void _drawCorner(Canvas canvas, Size size, EditorPiece piece, double alpha) {
-  final w = size.width;
-  final h = size.height;
-  final r = math.min(w, h) * 0.5;
-  final gauge = r * 0.32;
-
-  final pivot = switch (piece) {
-    EditorPiece.cornerNE => Offset(w, 0),
-    EditorPiece.cornerNW => Offset.zero,
-    EditorPiece.cornerSE => Offset(w, h),
-    EditorPiece.cornerSW => Offset(0, h),
-    _ => Offset.zero,
-  };
-  final startAngle = switch (piece) {
-    EditorPiece.cornerNE => math.pi * 0.5,
-    EditorPiece.cornerNW => 0.0,
-    EditorPiece.cornerSE => math.pi,
-    EditorPiece.cornerSW => math.pi * 1.5,
-    _ => 0.0,
-  };
-
-  final sleeperPaint = Paint()
+void _drawCornerSleepers(
+  Canvas canvas,
+  Offset pivot,
+  double r,
+  double g,
+  double startAngle,
+  double alpha,
+) {
+  final sleeper = Paint()
     ..color = const Color(0xFF5D4B3B).withValues(alpha: alpha)
     ..strokeWidth = math.max(2, r * 0.12);
   for (var i = 1; i <= 3; i++) {
     final a = startAngle + (math.pi * 0.5) * (i / 4);
     final dir = Offset(math.cos(a), math.sin(a));
     canvas.drawLine(
-      pivot + dir * (r - gauge * 1.6),
-      pivot + dir * (r + gauge * 1.6),
-      sleeperPaint,
+      pivot + dir * (r - g * 1.6),
+      pivot + dir * (r + g * 1.6),
+      sleeper,
     );
-  }
-
-  final railPaint = Paint()
-    ..color = const Color(0xFFD0D6DE).withValues(alpha: alpha)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = math.max(1.5, r * 0.1);
-  for (final radius in [r - gauge, r + gauge]) {
-    final rect = Rect.fromCircle(center: pivot, radius: radius);
-    canvas.drawArc(rect, startAngle, math.pi * 0.5, false, railPaint);
   }
 }
 
@@ -167,11 +205,11 @@ void _drawSwitch(
   Size size,
   EditorPiece piece,
   double alpha, {
-  bool verticalRectangle = false,
+  bool isVertical = false,
 }) {
-  final center = Offset(size.width * 0.5, size.height * 0.5);
+  final c = Offset(size.width * 0.5, size.height * 0.5);
   final u = math.min(size.width, size.height);
-  final radius = u * 0.4;
+  final r = u * 0.4;
   final fill = Paint()
     ..color = const Color(0xFF334155).withValues(alpha: alpha);
   final border = Paint()
@@ -179,49 +217,42 @@ void _drawSwitch(
     ..style = PaintingStyle.stroke
     ..strokeWidth = 2;
 
-  if (piece == EditorPiece.switchCircle) {
-    canvas.drawCircle(center, radius, fill);
-    canvas.drawCircle(center, radius, border);
-    _drawStraight(canvas, size, true, alpha);
-    _drawStraight(canvas, size, false, alpha);
-    return;
-  }
   if (piece == EditorPiece.switchRectangle) {
-    final rect = verticalRectangle
-        ? Rect.fromCenter(center: center, width: u * 0.42, height: u * 0.68)
-        : Rect.fromCenter(
-            center: center,
-            width: radius * 1.9,
-            height: radius * 1.35,
-          );
+    final rect = isVertical
+        ? Rect.fromCenter(center: c, width: u * 0.42, height: u * 0.68)
+        : Rect.fromCenter(center: c, width: r * 1.9, height: r * 1.35);
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
     canvas.drawRRect(rrect, fill);
     canvas.drawRRect(rrect, border);
-    _drawStraight(canvas, size, !verticalRectangle, alpha);
+    drawStraightEditorRail(canvas, size, !isVertical, alpha);
     return;
   }
-  // switchTriangle
-  final path = Path()
-    ..moveTo(center.dx, center.dy - radius)
-    ..lineTo(center.dx + radius * 0.95, center.dy + radius * 0.8)
-    ..lineTo(center.dx - radius * 0.95, center.dy + radius * 0.8)
-    ..close();
-  canvas.drawPath(path, fill);
-  canvas.drawPath(path, border);
-  _drawStraight(canvas, size, true, alpha);
-  _drawStraight(canvas, size, false, alpha);
+  if (piece == EditorPiece.switchCircle) {
+    canvas.drawCircle(c, r, fill);
+    canvas.drawCircle(c, r, border);
+  } else {
+    final path = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..lineTo(c.dx + r * 0.95, c.dy + r * 0.8)
+      ..lineTo(c.dx - r * 0.95, c.dy + r * 0.8)
+      ..close();
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, border);
+  }
+  drawStraightEditorRail(canvas, size, true, alpha);
+  drawStraightEditorRail(canvas, size, false, alpha);
 }
 
 void _drawTram(Canvas canvas, Size size, bool isGreen, double alpha) {
-  final center = Offset(size.width * 0.5, size.height * 0.5);
-  final bodyW = size.width * 0.62;
-  final bodyH = size.height * 0.38;
-  final baseColor = isGreen ? const Color(0xFF4CAF50) : const Color(0xFFE4572E);
+  final c = Offset(size.width * 0.5, size.height * 0.5);
+  final bw = size.width * 0.62;
+  final bh = size.height * 0.38;
+  final base = isGreen ? const Color(0xFF4CAF50) : const Color(0xFFE4572E);
   final body = RRect.fromRectAndRadius(
-    Rect.fromCenter(center: center, width: bodyW, height: bodyH),
+    Rect.fromCenter(center: c, width: bw, height: bh),
     const Radius.circular(5),
   );
-  canvas.drawRRect(body, Paint()..color = baseColor.withValues(alpha: alpha));
+  canvas.drawRRect(body, Paint()..color = base.withValues(alpha: alpha));
   canvas.drawRRect(
     body,
     Paint()
@@ -229,23 +260,16 @@ void _drawTram(Canvas canvas, Size size, bool isGreen, double alpha) {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.6,
   );
-  // Roof stripe & front cab indicator
-  final roof = Rect.fromCenter(
-    center: center,
-    width: bodyW * 0.55,
-    height: bodyH * 0.48,
-  );
   canvas.drawRect(
-    roof,
+    Rect.fromCenter(center: c, width: bw * 0.55, height: bh * 0.48),
     Paint()..color = Colors.black.withValues(alpha: 0.28 * alpha),
   );
-  final cab = Rect.fromCenter(
-    center: Offset(center.dx + bodyW * 0.34, center.dy),
-    width: bodyW * 0.14,
-    height: bodyH * 0.62,
-  );
   canvas.drawRect(
-    cab,
+    Rect.fromCenter(
+      center: Offset(c.dx + bw * 0.34, c.dy),
+      width: bw * 0.14,
+      height: bh * 0.62,
+    ),
     Paint()..color = const Color(0xFFFEF08A).withValues(alpha: 0.9 * alpha),
   );
 }

@@ -20,7 +20,10 @@ enum PlatformShape {
   square,
 
   /// Y-turn platform: reverses the tram onto the reversed path of its own loop.
-  triangle;
+  triangle,
+
+  /// Tight-radius Y-switch: curves left or right with SHIFT + directional key.
+  wye;
 
   /// Parses the JSON name; unknown or missing names fall back to [circle].
   static PlatformShape parse(Object? name) => PlatformShape.values.firstWhere(
@@ -83,6 +86,7 @@ class CrossoverData {
   TurntableMovement get movement => switch (shape) {
     PlatformShape.rectangle => TurntableMovement.slide,
     PlatformShape.triangle => TurntableMovement.reverse,
+    PlatformShape.wye => TurntableMovement.curve,
     PlatformShape.circle || PlatformShape.square => TurntableMovement.rotate,
   };
 
@@ -165,7 +169,8 @@ class CrossoverData {
         );
       }
     } else if (same &&
-        movement == TurntableMovement.rotate &&
+        (movement == TurntableMovement.rotate ||
+            movement == TurntableMovement.curve) &&
         fromPath.crossingsNear(center).length < 2) {
       errors.add(
         'a(z) "$id" forgóváltóhoz két áthaladás szükséges a középponton',

@@ -1,0 +1,431 @@
+{
+  "id": "budapest_02_epitkezes_tolatas",
+  "name": "2. Építkezési Tolatás",
+  "city": "Budapest",
+  "tileSize": 64,
+  "bounds": {
+    "width": 1040,
+    "height": 680
+  },
+  "segments": [
+    {
+      "id": "upper_loop",
+      "end": "connected",
+      "nextSegment": "upper_loop",
+      "points": [
+        [
+          -402.0,
+          -210.0
+        ],
+        [
+          -409.2,
+          -209.0
+        ],
+        [
+          -416.0,
+          -206.2
+        ],
+        [
+          -421.8,
+          -201.8
+        ],
+        [
+          -426.2,
+          -196.0
+        ],
+        [
+          -429.0,
+          -189.2
+        ],
+        [
+          -430.0,
+          -182.0
+        ],
+        [
+          -430.0,
+          -78.0
+        ],
+        [
+          -429.0,
+          -70.8
+        ],
+        [
+          -426.2,
+          -64.0
+        ],
+        [
+          -421.8,
+          -58.2
+        ],
+        [
+          -416.0,
+          -53.8
+        ],
+        [
+          -409.2,
+          -51.0
+        ],
+        [
+          -402.0,
+          -50.0
+        ],
+        [
+          352.0,
+          -50.0
+        ],
+        [
+          359.2,
+          -51.0
+        ],
+        [
+          366.0,
+          -53.8
+        ],
+        [
+          371.8,
+          -58.2
+        ],
+        [
+          376.2,
+          -64.0
+        ],
+        [
+          379.0,
+          -70.8
+        ],
+        [
+          380.0,
+          -78.0
+        ],
+        [
+          380.0,
+          -182.0
+        ],
+        [
+          379.0,
+          -189.2
+        ],
+        [
+          376.2,
+          -196.0
+        ],
+        [
+          371.8,
+          -201.8
+        ],
+        [
+          366.0,
+          -206.2
+        ],
+        [
+          359.2,
+          -209.0
+        ],
+        [
+          352.0,
+          -210.0
+        ],
+        [
+          -402.0,
+          -210.0
+        ]
+      ]
+    },
+    {
+      "id": "lower_loop",
+      "end": "connected",
+      "nextSegment": "lower_loop",
+      "points": [
+        [
+          352.0,
+          90.0
+        ],
+        [
+          359.2,
+          91.0
+        ],
+        [
+          366.0,
+          93.8
+        ],
+        [
+          371.8,
+          98.2
+        ],
+        [
+          376.2,
+          104.0
+        ],
+        [
+          379.0,
+          110.8
+        ],
+        [
+          380.0,
+          118.0
+        ],
+        [
+          380.0,
+          232.0
+        ],
+        [
+          379.0,
+          239.2
+        ],
+        [
+          376.2,
+          246.0
+        ],
+        [
+          371.8,
+          251.8
+        ],
+        [
+          366.0,
+          256.2
+        ],
+        [
+          359.2,
+          259.0
+        ],
+        [
+          352.0,
+          260.0
+        ],
+        [
+          -92.0,
+          260.0
+        ],
+        [
+          -99.2,
+          259.0
+        ],
+        [
+          -106.0,
+          256.2
+        ],
+        [
+          -111.8,
+          251.8
+        ],
+        [
+          -116.2,
+          246.0
+        ],
+        [
+          -119.0,
+          239.2
+        ],
+        [
+          -120.0,
+          232.0
+        ],
+        [
+          -120.0,
+          118.0
+        ],
+        [
+          -119.0,
+          110.8
+        ],
+        [
+          -116.2,
+          104.0
+        ],
+        [
+          -111.8,
+          98.2
+        ],
+        [
+          -106.0,
+          93.8
+        ],
+        [
+          -99.2,
+          91.0
+        ],
+        [
+          -92.0,
+          90.0
+        ],
+        [
+          352.0,
+          90.0
+        ]
+      ]
+    },
+    {
+      "id": "spine_upper",
+      "end": "connected",
+      "nextSegment": "spine_lower",
+      "points": [
+        [
+          20,
+          -295
+        ],
+        [
+          20,
+          -210
+        ],
+        [
+          20,
+          -50
+        ],
+        [
+          20,
+          35
+        ]
+      ]
+    },
+    {
+      "id": "spine_lower",
+      "end": "construction",
+      "points": [
+        [
+          20,
+          35
+        ],
+        [
+          20,
+          90
+        ],
+        [
+          20,
+          205
+        ]
+      ]
+    }
+  ],
+  "props": [
+    {
+      "type": "building",
+      "x": -225,
+      "y": -130,
+      "width": 130,
+      "height": 60
+    },
+    {
+      "type": "building",
+      "x": 205,
+      "y": -130,
+      "width": 130,
+      "height": 60
+    },
+    {
+      "type": "building",
+      "x": -275,
+      "y": 145,
+      "width": 130,
+      "height": 75
+    }
+  ],
+  "spawns": [
+    {
+      "segment": "upper_loop",
+      "time": 0.0,
+      "speed": 150,
+      "controls": "wasd",
+      "startDistance": 220,
+      "color": 4282244228
+    },
+    {
+      "segment": "lower_loop",
+      "time": 0.0,
+      "speed": 155,
+      "startDistance": 180,
+      "color": 4294946855
+    },
+    {
+      "segment": "upper_loop",
+      "time": 4.0,
+      "speed": 160,
+      "startDistance": 1150,
+      "color": 4293281838
+    }
+  ],
+  "goal": {
+    "crashes": 2
+  },
+  "crossovers": [
+    {
+      "id": "sw_west_y",
+      "platformShape": "triangle",
+      "x": -430,
+      "y": -130,
+      "radius": 48,
+      "signalOffset": [
+        -56,
+        0
+      ],
+      "links": [
+        {
+          "from": "upper_loop",
+          "to": "upper_loop"
+        }
+      ]
+    },
+    {
+      "id": "sw_north",
+      "platformShape": "circle",
+      "x": 20,
+      "y": -210,
+      "radius": 48,
+      "signalOffset": [
+        56,
+        -45
+      ],
+      "links": [
+        {
+          "from": "upper_loop",
+          "to": "spine_upper"
+        },
+        {
+          "from": "spine_upper",
+          "to": "upper_loop"
+        }
+      ]
+    },
+    {
+      "id": "sw_mid",
+      "platformShape": "circle",
+      "x": 20,
+      "y": -50,
+      "radius": 48,
+      "signalOffset": [
+        -56,
+        45
+      ],
+      "links": [
+        {
+          "from": "upper_loop",
+          "to": "spine_upper"
+        },
+        {
+          "from": "spine_upper",
+          "to": "upper_loop"
+        }
+      ]
+    },
+    {
+      "id": "sw_south",
+      "platformShape": "circle",
+      "x": 20,
+      "y": 90,
+      "radius": 48,
+      "signalOffset": [
+        -56,
+        -45
+      ],
+      "links": [
+        {
+          "from": "spine_lower",
+          "to": "lower_loop"
+        },
+        {
+          "from": "lower_loop",
+          "to": "spine_lower"
+        }
+      ]
+    }
+  ]
+}

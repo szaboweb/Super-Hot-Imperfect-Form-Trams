@@ -12,6 +12,7 @@ class EditorCrossoverPlan {
     required this.piece,
     required this.center,
     required this.rings,
+    this.radius = 48,
   });
 
   final String id;
@@ -20,6 +21,9 @@ class EditorCrossoverPlan {
 
   /// Distinct ring indices linked (one for a triangle on a single loop, else two).
   final List<int> rings;
+
+  /// Crossover platform radius in world px.
+  final double radius;
 }
 
 /// Outcome of planning the switches of a layout.
@@ -46,17 +50,21 @@ class EditorSwitchPlan {
 class EditorSwitchPlanner {
   EditorSwitchPlanner(this.grid, this.rings) {
     for (var r = 0; r < rings.length; r++) {
-      for (final p in rings[r].passes) {
+      final ring = rings[r];
+      if (!ring.isClosed) {
+        _stubRings[(ring.startStub!.cell, ring.startStub!.side)] = r;
+        _stubRings[(ring.endStub!.cell, ring.endStub!.side)] = r;
+      }
+      for (final p in ring.passes) {
         if (p.isStraight) _lanes[(p.cell, p.isHorizontal)] = (ring: r, pass: p);
       }
     }
   }
 
-  static const double _minSwitchDistance = 96.0;
-
   final EditorGrid grid;
   final List<EditorRing> rings;
   final Map<(EditorCell, bool), ({int ring, EditorPass pass})> _lanes = {};
+  final Map<(EditorCell, EditorSide), int> _stubRings = {};
   final List<EditorIssue> _issues = [];
   final List<({int a, int b})> _opposite = [];
   final List<({int a, int b})> _same = [];
@@ -70,6 +78,7 @@ class EditorSwitchPlanner {
         EditorPiece.switchCircle => _circle(id, e.key),
         EditorPiece.switchTriangle => _triangle(id, e.key),
         EditorPiece.switchRectangle => _rectangle(id, e.key),
+        EditorPiece.switchY => _wye(id, e.key),
         _ => null,
       };
       if (plan == null) continue;
@@ -77,7 +86,7 @@ class EditorSwitchPlanner {
         _issues.add(
           EditorIssue(EditorMessages.rectDuplicate(e.key), cell: e.key),
         );
-      } else if (_hasOverlap(plans, plan.center)) {
+      } else if (_hasOverlap(plans, plan.center, plan.radius)) {
         _issues.add(
           EditorIssue(EditorMessages.switchOverlap(e.key), cell: e.key),
         );
@@ -93,7 +102,8 @@ class EditorSwitchPlanner {
   static bool _hasOverlap(
     List<EditorCrossoverPlan> plans,
     math.Point<double> center,
-  ) => plans.any((p) => p.center.distanceTo(center) < _minSwitchDistance);
+    double radius,
+  ) => plans.any((p) => p.center.distanceTo(center) < p.radius + radius - 0.5);
 
   EditorCrossoverPlan _circle(String id, EditorCell cell) {
     final h = _lanes[(cell, true)]!.ring;
@@ -107,6 +117,25 @@ class EditorSwitchPlanner {
     cell,
     {_lanes[(cell, true)]!.ring, _lanes[(cell, false)]!.ring}.toList(),
   );
+
+  EditorCrossoverPlan _wye(String id, EditorCell cell) {
+    if (_lanes.containsKey((cell, true)) && _lanes.containsKey((cell, false))) {
+      final h = _lanes[(cell, true)]!.ring;
+      final v = _lanes[(cell, false)]!.ring;
+      return _plan(id, EditorPiece.switchY, cell, {h, v}.toList(), radius: 32);
+    }
+    final throughRing = (_lanes[(cell, true)] ?? _lanes[(cell, false)])!.ring;
+    final stemRing = _stubRings.entries
+        .firstWhere((e) => e.key.$1 == cell)
+        .value;
+    return _plan(
+      id,
+      EditorPiece.switchY,
+      cell,
+      throughRing == stemRing ? [throughRing] : [throughRing, stemRing],
+      radius: 32,
+    );
+  }
 
   EditorCrossoverPlan? _rectangle(String id, EditorCell cell) {
     final horizontal = _lanes.containsKey((cell, true));
@@ -153,12 +182,14 @@ class EditorSwitchPlanner {
     String id,
     EditorPiece piece,
     EditorCell cell,
-    List<int> ringIds,
-  ) => EditorCrossoverPlan(
+    List<int> ringIds, {
+    double radius = 48,
+  }) => EditorCrossoverPlan(
     id: id,
     piece: piece,
     center: grid.cellCenter(cell),
     rings: ringIds,
+    radius: radius,
   );
 
   /// 2-colours the rings: rings joined by a rectangle must run the same way.
@@ -243,6 +274,14 @@ class EditorSwitchPlanner {
       adj[p.rings[0]].add(p.rings[1]);
       adj[p.rings[1]].add(p.rings[0]);
     }
+    for (final e in grid.rails.entries) {
+      if (e.value != EditorPiece.crossing) continue;
+      final h = _lanes[(e.key, true)]!.ring;
+      final v = _lanes[(e.key, false)]!.ring;
+      if (h == v) continue;
+      adj[h].add(v);
+      adj[v].add(h);
+    }
     final visited = <int>{0};
     final queue = [0];
     for (var i = 0; i < queue.length; i++) {
@@ -252,7 +291,9 @@ class EditorSwitchPlanner {
     }
     for (var r = 0; r < rings.length; r++) {
       if (!visited.contains(r)) {
-        final cell = rings[r].passes.first.cell;
+        final cell = rings[r].passes.isNotEmpty
+            ? rings[r].passes.first.cell
+            : rings[r].startStub!.cell;
         _issues.add(
           EditorIssue(EditorMessages.disconnectedTrack(cell), cell: cell),
         );

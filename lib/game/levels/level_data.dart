@@ -3,7 +3,9 @@ import 'dart:math' show Point;
 import '../../input/tram_controls.dart';
 import '../systems/track_graph.dart';
 import 'crossover_data.dart';
+import 'gate_data.dart';
 import 'prop_data.dart';
+import 'track_zone_data.dart';
 
 /// One scheduled tram spawn on a segment (see `spawns` in the level JSON).
 class SpawnData {
@@ -53,6 +55,7 @@ class SpawnData {
 class LevelData {
   LevelData._({
     required this.id,
+    this.name,
     required this.city,
     required this.tileSize,
     required this.width,
@@ -61,6 +64,8 @@ class LevelData {
     required this.spawns,
     required this.props,
     required this.crossovers,
+    required this.gates,
+    required this.zones,
     required this.crashGoal,
   });
 
@@ -70,6 +75,7 @@ class LevelData {
     final bounds = json['bounds'] as Map<String, dynamic>?;
     final level = LevelData._(
       id: id,
+      name: json['name'] as String?,
       city: json['city'] as String? ?? '',
       tileSize: (json['tileSize'] as num?)?.toInt() ?? 64,
       width: (bounds?['width'] as num?)?.toDouble() ?? 1040,
@@ -90,6 +96,14 @@ class LevelData {
         for (final c in (json['crossovers'] as List? ?? const []))
           CrossoverData.fromJson(c as Map<String, dynamic>),
       ],
+      gates: [
+        for (final g in (json['gates'] as List? ?? const []))
+          GateData.fromJson(g as Map<String, dynamic>),
+      ],
+      zones: [
+        for (final z in (json['zones'] as List? ?? const []))
+          TrackZoneData.fromJson(z as Map<String, dynamic>),
+      ],
       crashGoal: ((json['goal'] as Map?)?['crashes'] as num?)?.toInt() ?? 0,
     );
     final errors = level.validate();
@@ -102,8 +116,23 @@ class LevelData {
   }
 
   final String id;
+
+  /// Optional human-readable display name from JSON (`name`).
+  final String? name;
   final String city;
   final int tileSize;
+
+  /// Human-readable display title for menus, falling back to humanized [id].
+  String get displayTitle {
+    final trimmed = name?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    final words = id
+        .split('_')
+        .where((part) => part.isNotEmpty)
+        .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+        .toList();
+    return words.isEmpty ? id : words.join(' ');
+  }
 
   /// Playable area size in world px, centred on the origin.
   final double width;
@@ -114,6 +143,12 @@ class LevelData {
 
   /// L-shaped switches between loops (flipped with the owner's SHIFT key).
   final List<CrossoverData> crossovers;
+
+  /// SHIFT-opened track barriers (`gates` in the level JSON).
+  final List<GateData> gates;
+
+  /// Ice and melted special rail zones (`zones` in the level JSON).
+  final List<TrackZoneData> zones;
   final int crashGoal;
 
   /// Track graph of the level segments and end hazards.
@@ -161,6 +196,12 @@ class LevelData {
     final segmentsById = {for (final s in segments) s.id: s};
     for (final c in crossovers) {
       errors.addAll(c.validate(segmentsById));
+    }
+    for (final g in gates) {
+      errors.addAll(g.validate(segmentsById));
+    }
+    for (final z in zones) {
+      errors.addAll(z.validate(segmentsById));
     }
     return errors;
   }

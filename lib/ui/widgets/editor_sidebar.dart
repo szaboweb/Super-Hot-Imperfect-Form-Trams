@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../game/editor/editor_controller.dart';
@@ -7,38 +8,83 @@ import 'editor_piece_painter.dart';
 
 /// Drag payload carried either from a sidebar shelf or from an existing grid cell.
 class EditorDragPayload {
+  /// Creates a drag payload originating from a sidebar shelf [piece].
   const EditorDragPayload.fromShelf(this.piece) : fromCell = null;
+
+  /// Creates a drag payload originating from an existing grid [fromCell].
   const EditorDragPayload.fromGrid(this.piece, EditorCell this.fromCell);
 
+  /// Piece being dragged.
   final EditorPiece piece;
+
+  /// Original grid cell when moved, or `null` when dragged from a shelf.
   final EditorCell? fromCell;
 }
 
-/// Left sidebar containing the three piece shelves: Sínek, Váltók, Villamosok.
-class EditorSidebar extends StatelessWidget {
+/// Left scrollable sidebar containing the four piece shelves: Sínek, Váltók, Speciális, Villamosok.
+class EditorSidebar extends StatefulWidget {
+  /// Creates the left editor piece palette sidebar bound to [controller].
   const EditorSidebar({super.key, required this.controller});
 
+  /// Editor state controller tracking piece selection.
   final EditorController controller;
 
-  static const _railPieces = [
-    (EditorPiece.straightH, 'Vízszintes'),
-    (EditorPiece.straightV, 'Függőleges'),
-    (EditorPiece.cornerNE, 'Kanyar É-K'),
-    (EditorPiece.cornerNW, 'Kanyar É-Ny'),
-    (EditorPiece.cornerSE, 'Kanyar D-K'),
-    (EditorPiece.cornerSW, 'Kanyar D-Ny'),
+  @override
+  State<EditorSidebar> createState() => _EditorSidebarState();
+}
+
+class _EditorSidebarState extends State<EditorSidebar> {
+  static const _shelves = [
+    (
+      title: '1. Sínek',
+      columns: 2,
+      items: [
+        (EditorPiece.straightH, 'Vízszintes'),
+        (EditorPiece.straightV, 'Függőleges'),
+        (EditorPiece.cornerNE, 'Kanyar É-K'),
+        (EditorPiece.cornerNW, 'Kanyar É-Ny'),
+        (EditorPiece.cornerSE, 'Kanyar D-K'),
+        (EditorPiece.cornerSW, 'Kanyar D-Ny'),
+        (EditorPiece.crossing, 'Kereszteződés'),
+        (EditorPiece.bufferStop, 'Ütközőbak'),
+      ],
+    ),
+    (
+      title: '2. Váltók',
+      columns: 2,
+      items: [
+        (EditorPiece.switchCircle, 'Kör (90°)'),
+        (EditorPiece.switchRectangle, 'Téglalap (sáv)'),
+        (EditorPiece.switchTriangle, 'Háromszög (180°)'),
+        (EditorPiece.switchY, 'Y váltó (kisív)'),
+        (EditorPiece.gate, 'Sorompó'),
+      ],
+    ),
+    (
+      title: '3. Speciális',
+      columns: 2,
+      items: [
+        (EditorPiece.railIce, 'Jeges sín (gyorsító)'),
+        (EditorPiece.railMelted, 'Olvadt sín (lassító)'),
+      ],
+    ),
+    (
+      title: '4. Villamosok',
+      columns: 1,
+      items: [
+        (EditorPiece.tramGreen, 'Zöld (W/S + bal SHIFT)'),
+        (EditorPiece.tramRed, 'Piros (Nyilak + jobb SHIFT)'),
+      ],
+    ),
   ];
 
-  static const _switchPieces = [
-    (EditorPiece.switchCircle, 'Kör (90°)'),
-    (EditorPiece.switchRectangle, 'Téglalap (sáv)'),
-    (EditorPiece.switchTriangle, 'Háromszög (Y)'),
-  ];
+  late final ScrollController _scrollController = ScrollController();
 
-  static const _tramPieces = [
-    (EditorPiece.tramGreen, 'Zöld (W/S + bal SHIFT)'),
-    (EditorPiece.tramRed, 'Piros (Nyilak + jobb SHIFT)'),
-  ];
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,30 +95,43 @@ class EditorSidebar extends StatelessWidget {
         border: Border(right: BorderSide(color: Color(0xFF1E293B))),
       ),
       child: ListenableBuilder(
-        listenable: controller,
-        builder: (context, _) => ListView(
-          padding: const EdgeInsets.all(12),
+        listenable: widget.controller,
+        builder: (context, _) => _buildScrollableShelves(context),
+      ),
+    );
+  }
+
+  Widget _buildScrollableShelves(BuildContext context) {
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(
+        dragDevices: const {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.trackpad,
+        },
+      ),
+      child: Scrollbar(
+        controller: _scrollController,
+        thumbVisibility: true,
+        trackVisibility: true,
+        interactive: true,
+        thickness: 8,
+        radius: const Radius.circular(4),
+        child: ListView(
+          key: const Key('editor_sidebar_scroll'),
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(12, 12, 16, 16),
           children: [
-            _ShelfSection(
-              title: '1. Sínek',
-              items: _railPieces,
-              controller: controller,
-              columns: 2,
-            ),
-            const SizedBox(height: 14),
-            _ShelfSection(
-              title: '2. Váltók',
-              items: _switchPieces,
-              controller: controller,
-              columns: 2,
-            ),
-            const SizedBox(height: 14),
-            _ShelfSection(
-              title: '3. Villamosok',
-              items: _tramPieces,
-              controller: controller,
-              columns: 1,
-            ),
+            for (var i = 0; i < _shelves.length; i++) ...[
+              if (i > 0) const SizedBox(height: 14),
+              _ShelfSection(
+                title: _shelves[i].title,
+                items: _shelves[i].items,
+                controller: widget.controller,
+                columns: _shelves[i].columns,
+              ),
+            ],
           ],
         ),
       ),
@@ -114,7 +173,7 @@ class _ShelfSection extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 8,
           crossAxisSpacing: 8,
-          childAspectRatio: columns == 1 ? 2.8 : 1.12,
+          childAspectRatio: columns == 1 ? 2.8 : 0.94,
           children: [
             for (final (piece, label) in items)
               _ShelfTile(
@@ -147,7 +206,29 @@ class _ShelfTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tile = InkWell(
+    final tile = _buildTileContent();
+    return Draggable<EditorDragPayload>(
+      data: EditorDragPayload.fromShelf(piece),
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xCC0F172A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF60A5FA), width: 1.5),
+          ),
+          child: CustomPaint(painter: _buildPainter()),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.45, child: tile),
+      child: tile,
+    );
+  }
+
+  Widget _buildTileContent() {
+    return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -166,39 +247,31 @@ class _ShelfTile extends StatelessWidget {
             Expanded(
               child: AspectRatio(
                 aspectRatio: 1,
-                child: CustomPaint(painter: EditorPiecePainter(piece: piece)),
+                child: CustomPaint(painter: _buildPainter()),
               ),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11, color: Color(0xFFE2E8F0)),
+              style: const TextStyle(
+                fontSize: 10.5,
+                height: 1.15,
+                color: Color(0xFFE2E8F0),
+              ),
             ),
           ],
         ),
       ),
     );
-
-    return Draggable<EditorDragPayload>(
-      data: EditorDragPayload.fromShelf(piece),
-      feedback: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: const Color(0xCC0F172A),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF60A5FA), width: 1.5),
-          ),
-          child: CustomPaint(painter: EditorPiecePainter(piece: piece)),
-        ),
-      ),
-      childWhenDragging: Opacity(opacity: 0.45, child: tile),
-      child: tile,
-    );
   }
+
+  EditorPiecePainter _buildPainter() => EditorPiecePainter(
+    piece: piece,
+    wyeStemSide: piece == EditorPiece.switchY
+        ? EditorSide.south
+        : EditorSide.south,
+  );
 }

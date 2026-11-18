@@ -35,39 +35,23 @@ abstract final class TurntableTurnBuilder {
         radius: radius,
       );
     }
+    if (movement == TurntableMovement.curve) {
+      return _buildCurveTurns(
+        from: from,
+        to: to,
+        center: center,
+        radius: radius,
+      );
+    }
     final fromHits = _hitsOrNearest(from, center);
     final toHits = _hitsOrNearest(to, center);
     final result = <TurntableTurn>[];
     for (final fh in fromHits) {
       for (final th in toHits) {
         if (identical(from, to) && (fh.along - th.along).abs() < 1.0) continue;
-        result.addAll([
-          _rotatePair(from, fh.along, to, th.along, center, radius),
-          _rotatePair(
-            from.reversed,
-            from.length - fh.along,
-            to,
-            th.along,
-            center,
-            radius,
-          ),
-          _rotatePair(
-            from,
-            fh.along,
-            to.reversed,
-            to.length - th.along,
-            center,
-            radius,
-          ),
-          _rotatePair(
-            from.reversed,
-            from.length - fh.along,
-            to.reversed,
-            to.length - th.along,
-            center,
-            radius,
-          ),
-        ]);
+        for (final p in _orientationPairs(from, fh.along, to, th.along)) {
+          result.add(_rotatePair(p.a, p.aAlong, p.b, p.bAlong, center, radius));
+        }
       }
     }
     return result;
@@ -94,6 +78,100 @@ abstract final class TurntableTurnBuilder {
   static double wrapPi(double a) {
     final wrapped = (a + math.pi) % (2 * math.pi);
     return wrapped - math.pi;
+  }
+
+  static List<TurntableTurn> _buildCurveTurns({
+    required TrackPath from,
+    required TrackPath to,
+    required math.Point<double> center,
+    required double radius,
+  }) {
+    final fromHits = _hitsOrNearest(from, center);
+    final toHits = _hitsOrNearest(to, center);
+    final result = <TurntableTurn>[];
+    for (final fh in fromHits) {
+      for (final th in toHits) {
+        if (identical(from, to) && (fh.along - th.along).abs() < 1.0) continue;
+        _collectCurvePairs(
+          from,
+          fh.along,
+          to,
+          th.along,
+          center,
+          radius,
+          result,
+        );
+      }
+    }
+    return result;
+  }
+
+  static void _collectCurvePairs(
+    TrackPath from,
+    double fhAlong,
+    TrackPath to,
+    double thAlong,
+    math.Point<double> center,
+    double radius,
+    List<TurntableTurn> out,
+  ) {
+    for (final p in _orientationPairs(from, fhAlong, to, thAlong)) {
+      final turn = _curvePairIfValid(
+        p.a,
+        p.aAlong,
+        p.b,
+        p.bAlong,
+        center,
+        radius,
+      );
+      if (turn != null) out.add(turn);
+    }
+  }
+
+  static List<({TrackPath a, double aAlong, TrackPath b, double bAlong})>
+  _orientationPairs(
+    TrackPath from,
+    double fhAlong,
+    TrackPath to,
+    double thAlong,
+  ) {
+    final aOptions = [
+      (path: from, along: fhAlong),
+      (path: from.reversed, along: from.length - fhAlong),
+    ];
+    final bOptions = [
+      (path: to, along: thAlong),
+      (path: to.reversed, along: to.length - thAlong),
+    ];
+    return [
+      for (final a in aOptions)
+        for (final b in bOptions)
+          (a: a.path, aAlong: a.along, b: b.path, bAlong: b.along),
+    ];
+  }
+
+  static TurntableTurn? _curvePairIfValid(
+    TrackPath aPath,
+    double aAlong,
+    TrackPath bPath,
+    double bAlong,
+    math.Point<double> center,
+    double radius,
+  ) {
+    final diff = wrapPi(bPath.headingAt(bAlong) - aPath.headingAt(aAlong))
+        .abs();
+    if ((diff - math.pi / 2).abs() >= 0.25) return null;
+    if (!aPath.isClosed && aAlong < radius - 1.0) return null;
+    if (!bPath.isClosed && bAlong + radius > bPath.length + 1.0) return null;
+    return TurntableTurn.create(
+      from: aPath,
+      to: bPath,
+      center: center,
+      radius: radius,
+      fromAlong: aAlong,
+      toAlong: bAlong,
+      movement: TurntableMovement.curve,
+    );
   }
 
   static List<TurntableTurn> _buildSlideTurns({

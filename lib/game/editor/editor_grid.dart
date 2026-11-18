@@ -75,24 +75,97 @@ class EditorGrid {
 
   EditorPiece? railAt(EditorCell c) => _rails[c];
 
+  /// True when [cell] holds an auto-straight piece oriented vertically.
+  bool isVerticalInline(EditorCell cell) {
+    if (railAt(cell)?.isAutoStraight != true) return false;
+    final west = _isSideOpen(cell, EditorSide.west);
+    final east = _isSideOpen(cell, EditorSide.east);
+    if (west && east) return false;
+    final north = _isSideOpen(cell, EditorSide.north);
+    final south = _isSideOpen(cell, EditorSide.south);
+    if (north && south) return true;
+    return (north || south) && !(west || east);
+  }
+
   /// True when [cell] holds a [EditorPiece.switchRectangle] oriented
   /// vertically (north/south neighbours open, without both west/east open).
-  bool isVerticalRectangle(EditorCell cell) {
-    if (railAt(cell) != EditorPiece.switchRectangle) return false;
-    return !(_isSideOpen(cell, EditorSide.west) &&
-            _isSideOpen(cell, EditorSide.east)) &&
-        _isSideOpen(cell, EditorSide.north) &&
-        _isSideOpen(cell, EditorSide.south);
+  bool isVerticalRectangle(EditorCell cell) =>
+      railAt(cell) == EditorPiece.switchRectangle && isVerticalInline(cell);
+
+  /// Side from which a rail connects into the buffer stop at [cell], or null
+  /// if [cell] does not hold a buffer stop.
+  EditorSide? bufferEntrySide(EditorCell cell) {
+    if (railAt(cell) != EditorPiece.bufferStop) return null;
+    for (final s in EditorSide.values) {
+      final n = (col: cell.col + s.dCol, row: cell.row + s.dRow);
+      final piece = railAt(n);
+      if (piece == null) continue;
+      final opens =
+          piece.sides.contains(s.opposite) ||
+          piece.isCrossing ||
+          piece == EditorPiece.switchY ||
+          (piece.isAutoStraight &&
+              (isVerticalInline(n) ? !s.isHorizontal : s.isHorizontal));
+      if (opens) return s;
+    }
+    return EditorSide.west;
+  }
+
+  /// Branching stem side of a 3-way [EditorPiece.switchY] at [cell], or null
+  /// if [cell] is not a Y-switch or has 4 connected branches.
+  EditorSide? wyeStemSide(EditorCell cell) {
+    if (railAt(cell) != EditorPiece.switchY) return null;
+    final openSides = [
+      for (final s in EditorSide.values)
+        if (_isSideOpen(cell, s)) s,
+    ];
+    if (openSides.length == 4) return null;
+    if (openSides.length == 3) {
+      final missing = EditorSide.values.firstWhere(
+        (s) => !openSides.contains(s),
+      );
+      return missing.opposite;
+    }
+    final vertical =
+        !(openSides.contains(EditorSide.west) &&
+            openSides.contains(EditorSide.east)) &&
+        openSides.contains(EditorSide.north) &&
+        openSides.contains(EditorSide.south);
+    return vertical ? EditorSide.east : EditorSide.south;
   }
 
   bool _isSideOpen(EditorCell cell, EditorSide side) {
-    final piece = railAt((
-      col: cell.col + side.dCol,
-      row: cell.row + side.dRow,
-    ));
+    final n = (col: cell.col + side.dCol, row: cell.row + side.dRow);
+    final piece = railAt(n);
     if (piece == null) return false;
-    if (piece == EditorPiece.switchRectangle || piece.isCrossing) return true;
+    if (piece.isAutoStraight ||
+        piece.isCrossing ||
+        piece == EditorPiece.switchY) {
+      return true;
+    }
+    if (piece == EditorPiece.bufferStop) {
+      return _bufferAcceptsFrom(n, side.opposite);
+    }
     return piece.sides.contains(side.opposite);
+  }
+
+  bool _bufferAcceptsFrom(EditorCell bufferCell, EditorSide fromSide) {
+    for (final other in EditorSide.values) {
+      if (other == fromSide) continue;
+      final nb = (
+        col: bufferCell.col + other.dCol,
+        row: bufferCell.row + other.dRow,
+      );
+      final piece = railAt(nb);
+      if (piece == null || piece == EditorPiece.bufferStop) continue;
+      if (piece.sides.contains(other.opposite) ||
+          piece.isCrossing ||
+          piece == EditorPiece.switchY ||
+          piece.isAutoStraight) {
+        return false;
+      }
+    }
+    return true;
   }
 
   EditorPiece? tramAt(EditorCell c) {
@@ -124,7 +197,7 @@ class EditorGrid {
   EditorEditResult place(EditorPiece piece, EditorCell cell) {
     if (!inBounds(cell)) return EditorEditResult.outOfBounds;
     if (piece.isTram) return _placeTram(piece, cell);
-    if (piece.isCrossing && tramAt(cell) != null) {
+    if (piece.blocksTram && tramAt(cell) != null) {
       return EditorEditResult.blockedByTram;
     }
     _rails[cell] = piece;
@@ -218,9 +291,15 @@ class EditorGrid {
     EditorPiece.cornerSW => '┐',
     EditorPiece.cornerNE => '└',
     EditorPiece.cornerNW => '┘',
+    EditorPiece.crossing => '┼',
+    EditorPiece.bufferStop => '▪',
     EditorPiece.switchCircle => '◎',
     EditorPiece.switchRectangle => '▬',
     EditorPiece.switchTriangle => '△',
+    EditorPiece.switchY => '¥',
+    EditorPiece.gate => '╫',
+    EditorPiece.railIce => '≈',
+    EditorPiece.railMelted => '~',
     EditorPiece.tramGreen || EditorPiece.tramRed || null => '.',
   };
 }

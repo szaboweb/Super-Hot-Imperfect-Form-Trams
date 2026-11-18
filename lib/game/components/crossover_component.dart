@@ -13,6 +13,7 @@ import 'slide_rail_component.dart';
 import 'track_component.dart';
 import 'tram_component.dart';
 import 'turntable_rail_component.dart';
+import 'wye_rail_component.dart';
 import 'y_rail_component.dart';
 
 /// Layer 3 (track): one turntable crossover: signal light and the disc angle that
@@ -70,6 +71,7 @@ class CrossoverComponent extends PositionComponent {
     TurntableMovement.rotate => TurntableRailComponent(crossover: this),
     TurntableMovement.slide => SlideRailComponent(crossover: this),
     TurntableMovement.reverse => YRailComponent(crossover: this),
+    TurntableMovement.curve => WyeRailComponent(crossover: this),
   };
 
   @override
@@ -100,7 +102,7 @@ class CrossoverComponent extends PositionComponent {
     switch (data.movement) {
       case TurntableMovement.rotate:
         platformAngle = turntableAngle;
-      case TurntableMovement.slide:
+      case TurntableMovement.slide || TurntableMovement.curve:
         break;
       case TurntableMovement.reverse:
         final ride = activeRide;

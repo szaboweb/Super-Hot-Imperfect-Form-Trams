@@ -45,5 +45,13 @@ abstract final class EditorMessages {
   static String disconnectedTrack(EditorCell c) =>
       'Különálló pályarész ${_at(c)}: erről a sínről nem lehet átváltani.';
 
+  /// Error message when a buffer stop does not connect to exactly one rail.
+  static String bufferConnections(EditorCell c) =>
+      'Ütközőbak ${_at(c)}: pontosan egy sínvéghez csatlakozhat.';
+
+  /// Error message when a Y-switch has fewer than three connected rail arms.
+  static String wyeConnections(EditorCell c) =>
+      'Y váltó ${_at(c)}: legalább három csatlakozó sínág szükséges.';
+
   static String levelInvalid(String detail) => 'Érvénytelen pálya: $detail';
 }

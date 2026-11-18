@@ -8,8 +8,10 @@ import 'editor_sidebar.dart';
 
 /// Interactive 16x10 grid canvas supporting drag-and-drop, move, tap, and right-click erase.
 class EditorGridCanvas extends StatelessWidget {
+  /// Creates an interactive grid canvas bound to [controller].
   const EditorGridCanvas({super.key, required this.controller});
 
+  /// Editor controller providing the layout grid and edit actions.
   final EditorController controller;
 
   @override
@@ -69,13 +71,6 @@ class _GridCellWidgetState extends State<_GridCellWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final grid = widget.controller.grid;
-    final rail = grid.railAt(widget.cell);
-    final tram = grid.tramAt(widget.cell);
-    final topPiece = tram ?? rail;
-    final hasError = widget.controller.errorCells.contains(widget.cell);
-    final verticalRectangle = grid.isVerticalRectangle(widget.cell);
-
     return DragTarget<EditorDragPayload>(
       onWillAcceptWithDetails: (_) => true,
       onAcceptWithDetails: (details) {
@@ -86,56 +81,94 @@ class _GridCellWidgetState extends State<_GridCellWidget> {
           widget.controller.placePiece(payload.piece, widget.cell);
         }
       },
-      builder: (context, candidateData, _) {
-        final isDragTarget = candidateData.isNotEmpty;
-        final content = MouseRegion(
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() => _hovered = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => widget.controller.handleCellTap(widget.cell),
-            onSecondaryTapUp: (_) => widget.controller.removeAt(widget.cell),
-            child: _CellVisual(
-              cell: widget.cell,
-              rail: rail,
-              tram: tram,
-              verticalRectangle: verticalRectangle,
-              hasError: hasError,
-              isDragTarget: isDragTarget,
-              hovered: _hovered,
+      builder: (context, candidateData, _) =>
+          _buildCellContent(isDragTarget: candidateData.isNotEmpty),
+    );
+  }
+
+  Widget _buildCellContent({required bool isDragTarget}) {
+    final grid = widget.controller.grid;
+    final rail = grid.railAt(widget.cell);
+    final tram = grid.tramAt(widget.cell);
+    final hasError = widget.controller.errorCells.contains(widget.cell);
+    final verticalInline = grid.isVerticalInline(widget.cell);
+    final bufferSide = grid.bufferEntrySide(widget.cell) ?? EditorSide.west;
+    final wyeStemSide = grid.wyeStemSide(widget.cell);
+
+    final content = MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => widget.controller.handleCellTap(widget.cell),
+        onSecondaryTapUp: (_) => widget.controller.removeAt(widget.cell),
+        child: _CellVisual(
+          cell: widget.cell,
+          rail: rail,
+          tram: tram,
+          verticalInline: verticalInline,
+          bufferSide: bufferSide,
+          wyeStemSide: wyeStemSide,
+          hasError: hasError,
+          isDragTarget: isDragTarget,
+          hovered: _hovered,
+        ),
+      ),
+    );
+    final topPiece = tram ?? rail;
+    if (topPiece == null) return content;
+    return _buildDraggable(
+      content: content,
+      topPiece: topPiece,
+      rail: rail,
+      tram: tram,
+      verticalInline: verticalInline,
+      bufferSide: bufferSide,
+      wyeStemSide: wyeStemSide,
+      hasError: hasError,
+    );
+  }
+
+  Widget _buildDraggable({
+    required Widget content,
+    required EditorPiece topPiece,
+    required EditorPiece? rail,
+    required EditorPiece? tram,
+    required bool verticalInline,
+    required EditorSide bufferSide,
+    required EditorSide? wyeStemSide,
+    required bool hasError,
+  }) {
+    final isRail = topPiece == rail;
+    return Draggable<EditorDragPayload>(
+      data: EditorDragPayload.fromGrid(topPiece, widget.cell),
+      feedback: Material(
+        color: Colors.transparent,
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: CustomPaint(
+            painter: EditorPiecePainter(
+              piece: topPiece,
+              verticalInline: isRail && verticalInline,
+              bufferSide: isRail ? bufferSide : EditorSide.west,
+              wyeStemSide: isRail ? wyeStemSide : EditorSide.south,
             ),
           ),
-        );
-
-        if (topPiece == null) return content;
-
-        return Draggable<EditorDragPayload>(
-          data: EditorDragPayload.fromGrid(topPiece, widget.cell),
-          feedback: Material(
-            color: Colors.transparent,
-            child: SizedBox(
-              width: 56,
-              height: 56,
-              child: CustomPaint(
-                painter: EditorPiecePainter(
-                  piece: topPiece,
-                  verticalRectangle: topPiece == rail && verticalRectangle,
-                ),
-              ),
-            ),
-          ),
-          childWhenDragging: _CellVisual(
-            cell: widget.cell,
-            rail: tram != null ? rail : null,
-            tram: null,
-            verticalRectangle: verticalRectangle,
-            hasError: hasError,
-            isDragTarget: false,
-            hovered: _hovered,
-          ),
-          child: content,
-        );
-      },
+        ),
+      ),
+      childWhenDragging: _CellVisual(
+        cell: widget.cell,
+        rail: tram != null ? rail : null,
+        tram: null,
+        verticalInline: verticalInline,
+        bufferSide: bufferSide,
+        wyeStemSide: wyeStemSide,
+        hasError: hasError,
+        isDragTarget: false,
+        hovered: _hovered,
+      ),
+      child: content,
     );
   }
 }
@@ -145,7 +178,9 @@ class _CellVisual extends StatelessWidget {
     required this.cell,
     required this.rail,
     required this.tram,
-    required this.verticalRectangle,
+    required this.verticalInline,
+    required this.bufferSide,
+    required this.wyeStemSide,
     required this.hasError,
     required this.isDragTarget,
     required this.hovered,
@@ -154,21 +189,20 @@ class _CellVisual extends StatelessWidget {
   final EditorCell cell;
   final EditorPiece? rail;
   final EditorPiece? tram;
-  final bool verticalRectangle;
+  final bool verticalInline;
+  final EditorSide bufferSide;
+  final EditorSide? wyeStemSide;
   final bool hasError;
   final bool isDragTarget;
   final bool hovered;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = _borderColor();
-    final bgColor = _bgColor();
-
     return Container(
       decoration: BoxDecoration(
-        color: bgColor,
+        color: _bgColor(),
         border: Border.all(
-          color: borderColor,
+          color: _borderColor(),
           width: (hasError || isDragTarget) ? 1.8 : 0.5,
         ),
       ),
@@ -179,7 +213,9 @@ class _CellVisual extends StatelessWidget {
             CustomPaint(
               painter: EditorPiecePainter(
                 piece: rail!,
-                verticalRectangle: verticalRectangle,
+                verticalInline: verticalInline,
+                bufferSide: bufferSide,
+                wyeStemSide: wyeStemSide,
               ),
             ),
           if (tram != null)

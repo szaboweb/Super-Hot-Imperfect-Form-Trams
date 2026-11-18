@@ -9,4 +9,7 @@ enum TurntableMovement {
   /// The tram runs a Y-shaped loop on the platform and leaves backwards on the
   /// reversed path of its own track (triangle).
   reverse,
+
+  /// Tight quarter-circle turnout arc onto a left or right perpendicular branch (wye).
+  curve,
 }

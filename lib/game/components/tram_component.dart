@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 
 import '../../core/game_log.dart';
 import '../../input/tram_controls.dart';
-import '../graphics/pixel_art.dart';
 import '../graphics/render_layer.dart';
+import '../graphics/tram_hull_painter.dart';
+import '../systems/gate_system.dart';
 import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
+import '../systems/track_zone_system.dart';
 import '../systems/turntable_ride.dart';
 import '../systems/turntable_switch_system.dart';
 
@@ -79,6 +81,9 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   /// Called when a SHIFT signal successfully boards a turntable platform.
   void Function(Vector2 position)? onTurnHit;
 
+  /// Called when a SHIFT signal misses all platforms or hits an occupied one.
+  void Function()? onTurnMiss;
+
   /// Body colour of the Canvas fallback; also used by the HUD and mini-map.
   final Color color;
 
@@ -89,10 +94,17 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   double _signalCooldown = 0;
   double _sinkProgress = 0;
   double _fallSpeed = 0;
+  double _turnSteer = 0;
   math.Point<double>? _desiredDirection;
 
   /// The level's turntable rules; null = no turntables (SHIFT does nothing).
   TurntableSwitchSystem? switches;
+
+  /// Optional track-barrier gate system checked first on SHIFT.
+  GateSystem? gates;
+
+  /// Optional special surface zone system (`ice` / `melted` rails).
+  TrackZoneSystem? zones;
 
   /// Optional provider returning platform centres currently occupied by another tram.
   Iterable<math.Point<double>> Function()? occupiedPlatformCenters;
@@ -118,14 +130,11 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     speed = 0;
   }
 
-  /// The tram's own SHIFT signal: puts this tram on the disc it is on right now (any part of
-  /// the tram on the disc counts). Presses closer than [TurntableSwitchSystem.signalCooldownSeconds]
-  /// to the previous one are ignored. False (logged as MISS) if it is on no disc.
-  bool requestTurn({math.Point<double>? desiredDirection}) {
-    final system = switches;
-    if (system == null || _ride != null || speed == 0 || isCrashed) {
-      return false;
-    }
+  /// The tram's own SHIFT signal: opens a closed [GateSystem] barrier ahead if
+  /// in range, otherwise boards the turntable/wye switch it is currently on.
+  /// Presses closer than [TurntableSwitchSystem.signalCooldownSeconds] are ignored.
+  bool requestTurn({math.Point<double>? desiredDirection, double? turnSteer}) {
+    if (_ride != null || isCrashed) return false;
     final key = controls?.switchLabel ?? 'SHIFT';
     if (_signalCooldown > 0) {
       GameLog.event(
@@ -134,6 +143,19 @@ class TramComponent extends PositionComponent with KeyboardHandler {
       );
       return false;
     }
+    final opened = gates?.tryOpen(
+      path: path,
+      distance: trackDistance,
+      speed: speed,
+    );
+    if (opened != null) {
+      _signalCooldown = TurntableSwitchSystem.signalCooldownSeconds;
+      GameLog.event('switch', '$label $key: OPENED ${opened.data.id}');
+      onTurnHit?.call(Vector2(opened.data.x, opened.data.y));
+      return true;
+    }
+    final system = switches;
+    if (system == null || speed == 0) return false;
     _signalCooldown = TurntableSwitchSystem.signalCooldownSeconds;
     final decision = system.decide(
       path: path,
@@ -141,11 +163,16 @@ class TramComponent extends PositionComponent with KeyboardHandler {
       speed: speed,
       halfLength: halfLength,
       desiredDirection: desiredDirection ?? _desiredDirection,
+      turnSteer: turnSteer ?? _turnSteer,
       occupiedCenters: occupiedPlatformCenters?.call() ?? const [],
     );
     GameLog.event('switch', decision.describe(tramLabel: label, keyLabel: key));
     _ride = decision.ride;
-    if (decision.isHit) onTurnHit?.call(position);
+    if (decision.isHit) {
+      onTurnHit?.call(position);
+    } else {
+      onTurnMiss?.call();
+    }
     return decision.isHit;
   }
 
@@ -154,9 +181,10 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     final controls = this.controls;
     if (controls == null || isCrashed) return true;
     throttle = controls.throttleFor(keysPressed);
+    _turnSteer = controls.turnSteerFor(keysPressed);
     _desiredDirection = controls.desiredDirectionFor(keysPressed);
     if (event is KeyDownEvent && event.logicalKey == controls.switchKey) {
-      requestTurn(desiredDirection: _desiredDirection);
+      requestTurn(desiredDirection: _desiredDirection, turnSteer: _turnSteer);
     }
     return true;
   }
@@ -169,15 +197,28 @@ class TramComponent extends PositionComponent with KeyboardHandler {
       return;
     }
     _signalCooldown = math.max(0, _signalCooldown - dt);
+    final zone =
+        zones?.effectAt(math.Point(position.x, position.y)) ??
+        TrackZoneSystem.neutralEffect;
     final isBraking = throttle * speed < 0;
     final effectiveAccel = isBraking
-        ? acceleration * brakeEfficiency
+        ? acceleration * brakeEfficiency * zone.brakeMultiplier
         : acceleration;
     final skidding = isBraking && speed.abs() > skidMinSpeed;
     brakeHeat = (brakeHeat + (skidding ? 0.4 : -0.15) * dt).clamp(0.0, 1.0);
     speed += throttle * effectiveAccel * dt;
-    speed *= math.pow(drag, dt).toDouble();
-    speed = speed.clamp(-maxSpeed / 3, maxSpeed);
+    if (zone.boostAccel > 0) {
+      final dir = speed.abs() > 1.0 ? (speed >= 0 ? 1.0 : -1.0) : throttle.sign;
+      speed += dir * zone.boostAccel * dt;
+    } else if (zone.boostAccel < 0 && speed != 0) {
+      final drop = zone.boostAccel.abs() * dt;
+      speed = speed.abs() <= drop && throttle == 0
+          ? 0.0
+          : speed - speed.sign * math.min(speed.abs(), drop);
+    }
+    speed *= math.pow(zone.dragPerSec, dt).toDouble();
+    final speedCap = maxSpeed * zone.maxSpeedMultiplier;
+    speed = speed.clamp(-speedCap / 3, speedCap);
     final ride = _ride;
     if (ride == null) {
       trackDistance += speed * dt;
@@ -215,79 +256,16 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     angle = path.headingAt(trackDistance);
   }
 
-  static const Radius _hullRadius = Radius.circular(4);
-
   @override
   void render(Canvas canvas) {
-    final hull = size.toRect();
-    final hullRRect = RRect.fromRectAndRadius(hull, _hullRadius);
-    if (crashHazard != TrackEnd.river) {
-      canvas.drawRRect(
-        hullRRect.shift(const Offset(3, 4)),
-        Paint()..color = const Color(0x50000000),
-      );
-    }
-    _renderHull(canvas, hullRRect);
-    if (crashHazard == TrackEnd.river) {
-      _renderRiverSubmersion(canvas, hull, hullRRect);
-    } else if (isCrashed) {
-      _renderCrashCross(canvas);
-    }
-  }
-
-  void _renderHull(Canvas canvas, RRect hullRRect) {
-    final sprite = this.sprite;
-    if (sprite != null) {
-      sprite.render(canvas, size: size, overridePaint: pixelArtPaint());
-      return;
-    }
-    final isSurfaceWreck = isCrashed && crashHazard != TrackEnd.river;
-    canvas.drawRRect(
-      hullRRect,
-      Paint()..color = isSurfaceWreck ? const Color(0xFF3A3E48) : color,
+    paintTramHull(
+      canvas,
+      size: size,
+      color: color,
+      sprite: sprite,
+      isCrashed: isCrashed,
+      crashHazard: crashHazard,
+      sinkProgress: _sinkProgress,
     );
-    if (!isCrashed) {
-      canvas.drawRect(
-        Rect.fromLTWH(2, 2, size.x - 4, 10),
-        Paint()..color = const Color(0xFFF3E9D2),
-      );
-    }
-  }
-
-  void _renderRiverSubmersion(Canvas canvas, Rect hull, RRect hullRRect) {
-    final waterTint = const Color(0xFF061426)
-        .withValues(alpha: 0.72 * _sinkProgress);
-    canvas.drawRRect(hullRRect, Paint()..color = waterTint);
-    if (_sinkProgress < 1.0) {
-      final expand = 18 * _sinkProgress;
-      final ripple = Rect.fromCenter(
-        center: hull.center,
-        width: size.x + expand,
-        height: size.y + expand,
-      );
-      canvas.drawOval(
-        ripple,
-        Paint()
-          ..color = const Color(0xFF78ECFF)
-              .withValues(alpha: 0.8 * (1.0 - _sinkProgress))
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2,
-      );
-    } else {
-      _renderCrashCross(canvas);
-    }
-  }
-
-  void _renderCrashCross(Canvas canvas) {
-    final crossPaint = Paint()
-      ..color = const Color(0xFFFF5A36)
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      const Offset(3, 4),
-      Offset(size.x - 3, size.y - 4),
-      crossPaint,
-    );
-    canvas.drawLine(Offset(size.x - 3, 4), Offset(3, size.y - 4), crossPaint);
   }
 }

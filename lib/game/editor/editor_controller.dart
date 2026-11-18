@@ -117,6 +117,20 @@ class EditorController extends ChangeNotifier {
   String exportJson() =>
       const JsonEncoder.withIndent('  ').convert(grid.toJson());
 
+  /// Exports the validated playable [LevelData] JSON string, or null if layout has errors.
+  String? exportPlayableLevelJson() {
+    final result = _builder.build(grid);
+    final json = result.json;
+    if (json == null) return null;
+    return const JsonEncoder.withIndent('  ').convert(json);
+  }
+
+  /// Sets an informational status message on the editor banner.
+  void showStatus(String message) {
+    _statusMessage = message;
+    notifyListeners();
+  }
+
   /// Imports a JSON layout string into [grid], returning whether it succeeded.
   bool importJson(String raw) {
     try {
@@ -159,8 +173,7 @@ class EditorController extends ChangeNotifier {
     EditorEditResult.placed => null,
     EditorEditResult.outOfBounds => 'A cella a pályán kívül esik.',
     EditorEditResult.occupied => 'A célcella már foglalt.',
-    EditorEditResult.needsPlainRail =>
-      'Villamost csak egyszerű sínre vagy téglalap kitérőre tehetsz.',
+    EditorEditResult.needsPlainRail => 'Villamost csak nyílt sínre (egyenes, kanyar, téglalap kitérő, jeges/olvadt sín) tehetsz.',
     EditorEditResult.blockedByTram =>
       'Előbb vedd le a villamost erről a celláról.',
     EditorEditResult.nothingThere => null,

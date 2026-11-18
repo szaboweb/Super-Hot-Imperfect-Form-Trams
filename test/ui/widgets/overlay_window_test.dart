@@ -183,4 +183,101 @@ void main() {
     expect(find.text('Szerkesztő üzenet'), findsOneWidget);
     expect(find.text('Villamos elindult'), findsOneWidget);
   });
+
+  testWidgets(
+    'OverlayWindow minimizes/restores width and supports drag/resize edit mode',
+    (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: OverlayWindow(
+                    title: 'Mozgatható ablak',
+                    icon: Icons.layers,
+                    width: 320,
+                    maxHeight: 160,
+                    collapsedWidth: 220,
+                    child: SizedBox(
+                      height: 120,
+                      child: Center(
+                        child: ElevatedButton(
+                          key: const ValueKey('overlay_inner_btn'),
+                          onPressed: () => pressed++,
+                          child: const Text('Gomb'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final initialSize = tester.getSize(find.byType(OverlayWindow));
+      expect(initialSize.width, 320);
+
+      // Minimize shrinks width to collapsedWidth and hides the body.
+      await tester.tap(find.byKey(const ValueKey('overlay_window_toggle')));
+      await tester.pump();
+      expect(find.text('Gomb'), findsNothing);
+      expect(tester.getSize(find.byType(OverlayWindow)).width, 220);
+
+      // Restore brings back the original width and body.
+      await tester.tap(find.byKey(const ValueKey('overlay_window_toggle')));
+      await tester.pump();
+      expect(find.text('Gomb'), findsOneWidget);
+      expect(tester.getSize(find.byType(OverlayWindow)).width, 320);
+
+      // Toggle edit mode on: resize handle appears.
+      expect(find.byKey(const ValueKey('overlay_window_resize')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('overlay_window_edit')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('overlay_window_resize')),
+        findsOneWidget,
+      );
+
+      final beforeDragCenter = tester.getCenter(
+        find.byKey(const ValueKey('overlay_inner_btn')),
+      );
+      await tester.drag(
+        find.byKey(const ValueKey('overlay_window_header')),
+        const Offset(-100, -60),
+      );
+      await tester.pump();
+      final afterDragCenter = tester.getCenter(
+        find.byKey(const ValueKey('overlay_inner_btn')),
+      );
+      expect(afterDragCenter.dx, lessThan(beforeDragCenter.dx - 50));
+      expect(afterDragCenter.dy, lessThan(beforeDragCenter.dy - 30));
+
+      // Shifted child button remains tappable at its new translated position.
+      await tester.tap(find.byKey(const ValueKey('overlay_inner_btn')));
+      await tester.pump();
+      expect(pressed, 1);
+
+      // Resize drag grows both width and height.
+      final beforeResizeSize = tester.getSize(find.byType(OverlayWindow));
+      await tester.drag(
+        find.byKey(const ValueKey('overlay_window_resize')),
+        const Offset(80, 50),
+      );
+      await tester.pump();
+      final afterResizeSize = tester.getSize(find.byType(OverlayWindow));
+      expect(afterResizeSize.width, greaterThan(beforeResizeSize.width));
+      expect(afterResizeSize.height, greaterThan(beforeResizeSize.height));
+
+      // Toggle edit mode off hides the resize handle.
+      await tester.tap(find.byKey(const ValueKey('overlay_window_edit')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('overlay_window_resize')), findsNothing);
+    },
+  );
 }

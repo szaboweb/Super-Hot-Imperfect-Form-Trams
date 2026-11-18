@@ -39,6 +39,8 @@ class EditorLevelBuilder {
     final issues = _pre(grid);
     if (issues.isNotEmpty) return EditorBuildResult.failed(issues);
     final tracer = EditorTracer(grid);
+    final junction = tracer.junctionIssues();
+    if (junction.isNotEmpty) return EditorBuildResult.failed(junction);
     final open = tracer.openEnds();
     if (open.isNotEmpty) {
       return EditorBuildResult.failed([
@@ -85,14 +87,7 @@ class EditorLevelBuilder {
       'bounds': {'width': grid.worldWidth, 'height': grid.worldHeight},
       'segments': [
         for (var i = 0; i < rings.length; i++)
-          {
-            'id': _segmentId(i),
-            'end': 'connected',
-            'nextSegment': _segmentId(i),
-            'points': [
-              for (final p in geometry.ringPoints(rings[i])) [_r(p.x), _r(p.y)],
-            ],
-          },
+          _segmentJson(i, rings[i], geometry),
       ],
       'props': <Map<String, dynamic>>[],
       'spawns': [
@@ -101,8 +96,47 @@ class EditorLevelBuilder {
       ],
       'goal': {'crashes': 1},
       'crossovers': [for (final c in plan.crossovers) _crossover(c)],
+      'gates': _gatesJson(grid),
+      'zones': _zonesJson(grid),
     };
   }
+
+  Map<String, dynamic> _segmentJson(
+    int index,
+    EditorRing ring,
+    EditorGeometry geometry,
+  ) => {
+    'id': _segmentId(index),
+    if (ring.isClosed) ...{
+      'end': 'connected',
+      'nextSegment': _segmentId(index),
+    } else
+      'end': 'deadEnd',
+    'points': [
+      for (final p in geometry.ringPoints(ring)) [_r(p.x), _r(p.y)],
+    ],
+  };
+
+  List<Map<String, dynamic>> _gatesJson(EditorGrid grid) => [
+    for (final e in grid.rails.entries)
+      if (e.value == EditorPiece.gate)
+        {
+          'id': 'gate_${e.key.col}_${e.key.row}',
+          'x': _r(grid.cellCenter(e.key).x),
+          'y': _r(grid.cellCenter(e.key).y),
+        },
+  ];
+
+  List<Map<String, dynamic>> _zonesJson(EditorGrid grid) => [
+    for (final e in grid.rails.entries)
+      if (e.value == EditorPiece.railIce || e.value == EditorPiece.railMelted)
+        {
+          'kind': e.value == EditorPiece.railIce ? 'ice' : 'melted',
+          'x': _r(grid.cellCenter(e.key).x),
+          'y': _r(grid.cellCenter(e.key).y),
+          'radius': _r(grid.tileSize / 2),
+        },
+  ];
 
   Map<String, dynamic> _spawn(
     EditorGrid grid,
@@ -132,6 +166,7 @@ class EditorLevelBuilder {
     final shape = switch (c.piece) {
       EditorPiece.switchRectangle => 'rectangle',
       EditorPiece.switchTriangle => 'triangle',
+      EditorPiece.switchY => 'wye',
       _ => 'circle',
     };
     final links = (c.piece == EditorPiece.switchTriangle || a == b)
@@ -148,7 +183,7 @@ class EditorLevelBuilder {
       'platformShape': shape,
       'x': _r(c.center.x),
       'y': _r(c.center.y),
-      'radius': 48,
+      'radius': c.radius.round(),
       'links': links,
     };
   }

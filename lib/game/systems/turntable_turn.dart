@@ -7,8 +7,8 @@ import 'turntable_turn_builder.dart';
 
 /// A crossover platform at the point where loop [from] meets loop [to]: a tram on [from]
 /// that is on the platform can have it carry the tram on to [to], moving as [movement]
-/// says: rotate by [sweep], slide sideways by [slide], or (reverse) run a Y-turn and
-/// leave backwards on `from.reversed`. Pure Dart (no Flame).
+/// says: rotate by [sweep], slide sideways by [slide], reverse via Y-turn onto `from.reversed`,
+/// or curve onto a perpendicular branch. Pure Dart (no Flame).
 class TurntableTurn {
   TurntableTurn({
     required this.from,
@@ -68,9 +68,8 @@ class TurntableTurn {
       toAlong: toAlong,
       fromHeading: fromHeading,
       sweep: switch (movement) {
-        TurntableMovement.rotate => TurntableTurnBuilder.wrapPi(
-          to.headingAt(toAlong) - fromHeading,
-        ),
+        TurntableMovement.rotate || TurntableMovement.curve =>
+          TurntableTurnBuilder.wrapPi(to.headingAt(toAlong) - fromHeading),
         TurntableMovement.slide => 0,
         TurntableMovement.reverse => math.pi,
       },
@@ -99,7 +98,7 @@ class TurntableTurn {
 
   /// The platform never moves faster than this, even if the tram is about to leave it
   /// (it then rides the still-moving platform a little past the edge).
-  static const double minRideSeconds = 0.1;
+  static const double minRideSeconds = 0.2;
   static const double maxRideSeconds = 0.6;
 
   final TrackPath from;
@@ -166,7 +165,8 @@ class TurntableTurn {
     final travelSign = speed < 0 ? -1.0 : 1.0;
     final signedOffset = offset * travelSign;
     final reach = radius + halfLength;
-    if (signedOffset < -reach || signedOffset > reach) return null;
+    final maxOffset = movement == TurntableMovement.curve ? 12.0 : reach;
+    if (signedOffset < -reach || signedOffset > maxOffset) return null;
     final seconds = (reach - signedOffset) / speed.abs();
     return TurntableRide(
       turn: this,

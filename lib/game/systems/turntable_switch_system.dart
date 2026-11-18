@@ -50,6 +50,8 @@ class TurnDecision {
     TurntableMovement.slide =>
       'platform slides ${turn.slideDistance.round()}px',
     TurntableMovement.reverse => 'Y-turn reverses the tram',
+    TurntableMovement.curve =>
+      'Y-switch curves ${(turn.sweep * 180 / math.pi).round()}°',
   };
 }
 
@@ -64,15 +66,16 @@ class TurntableSwitchSystem {
   final List<TurntableTurn> turns;
 
   /// The first disc the tram (centre at [distance] on [path], moving [speed] px/s)
-  /// is on and that can still turn in time becomes a ride; if [desiredDirection]
-  /// is given, prefers a turn whose exit points that way (dot > 0.5). Platforms
-  /// whose centre is in [occupiedCenters] are locked and yield a BUSY decision.
+  /// is on and that can still turn in time becomes a ride; if [turnSteer] is non-zero
+  /// or [desiredDirection] is given, filters/prefers turns matching the steering input.
+  /// Platforms whose centre is in [occupiedCenters] are locked and yield a BUSY decision.
   TurnDecision decide({
     required TrackPath path,
     required double distance,
     required double speed,
     required double halfLength,
     math.Point<double>? desiredDirection,
+    double turnSteer = 0,
     Iterable<math.Point<double>> occupiedCenters = const [],
   }) {
     final candidates = <({TurntableTurn turn, TurntableRide ride})>[];
@@ -80,6 +83,7 @@ class TurntableSwitchSystem {
     for (final turn in turns) {
       final ride = turn.board(path, distance, speed, halfLength);
       if (ride == null) continue;
+      if (!_matchesCurveSteer(turn, desiredDirection, turnSteer)) continue;
       if (_isOccupied(turn.center, occupiedCenters)) {
         busyTurn ??= turn;
       } else {
@@ -87,7 +91,7 @@ class TurntableSwitchSystem {
       }
     }
     if (candidates.isNotEmpty) {
-      final chosen = _pickByDirection(candidates, desiredDirection);
+      final chosen = _pickCandidate(candidates, desiredDirection, turnSteer);
       return TurnDecision(
         turn: chosen.turn,
         offset: chosen.turn.offsetOf(path, distance),
@@ -104,6 +108,16 @@ class TurntableSwitchSystem {
     );
   }
 
+  static bool _matchesCurveSteer(
+    TurntableTurn turn,
+    math.Point<double>? desiredDirection,
+    double turnSteer,
+  ) {
+    if (turn.movement != TurntableMovement.curve) return true;
+    if (turnSteer != 0) return turn.sweep * turnSteer > 0.1;
+    return desiredDirection != null && _exitDot(turn, desiredDirection) > 0.5;
+  }
+
   static bool _isOccupied(
     math.Point<double> center,
     Iterable<math.Point<double>> occupiedCenters,
@@ -114,6 +128,31 @@ class TurntableSwitchSystem {
     return false;
   }
 
+  static ({TurntableTurn turn, TurntableRide ride}) _pickCandidate(
+    List<({TurntableTurn turn, TurntableRide ride})> candidates,
+    math.Point<double>? desired,
+    double turnSteer,
+  ) {
+    if (turnSteer != 0) {
+      final steered = [
+        for (final c in candidates)
+          if (c.turn.sweep * turnSteer > 0.1) c,
+      ];
+      if (steered.isNotEmpty) {
+        for (final c in steered) {
+          if (c.turn.movement == TurntableMovement.curve) return c;
+        }
+        return _pickByDirection(steered, desired);
+      }
+    }
+    return _pickByDirection(candidates, desired);
+  }
+
+  static double _exitDot(TurntableTurn turn, math.Point<double> desired) {
+    final h = turn.to.headingAt(turn.toAlong);
+    return math.sin(h) * desired.x - math.cos(h) * desired.y;
+  }
+
   static ({TurntableTurn turn, TurntableRide ride}) _pickByDirection(
     List<({TurntableTurn turn, TurntableRide ride})> candidates,
     math.Point<double>? desired,
@@ -122,8 +161,7 @@ class TurntableSwitchSystem {
     ({TurntableTurn turn, TurntableRide ride})? best;
     var bestDot = 0.5;
     for (final c in candidates) {
-      final h = c.turn.to.headingAt(c.turn.toAlong);
-      final dot = math.sin(h) * desired.x - math.cos(h) * desired.y;
+      final dot = _exitDot(c.turn, desired);
       if (dot > bestDot) {
         bestDot = dot;
         best = c;

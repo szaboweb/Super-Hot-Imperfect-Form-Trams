@@ -20,6 +20,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -27,11 +28,13 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze --no-pub
+      - run: flutter test --no-pub
 
   build-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: test
     if: github.event_name == 'workflow_dispatch' && inputs.build_release
     steps:
@@ -50,6 +53,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 15
     needs: test
     if: github.event_name == 'workflow_dispatch' && inputs.build_release
     steps:
@@ -67,6 +71,7 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: test
     if: github.event_name == 'workflow_dispatch' && inputs.build_release
     steps:

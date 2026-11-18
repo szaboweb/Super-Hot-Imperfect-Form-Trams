@@ -13,11 +13,13 @@ class EditorScreen extends StatelessWidget {
     required this.controller,
     required this.onStartRace,
     required this.onPlayDefault,
+    this.onBackToMenu,
   });
 
   final EditorController controller;
   final ValueChanged<LevelData> onStartRace;
   final VoidCallback onPlayDefault;
+  final VoidCallback? onBackToMenu;
 
   void _handleStart() {
     final result = controller.buildLevel();
@@ -36,6 +38,7 @@ class EditorScreen extends StatelessWidget {
             controller: controller,
             onStart: _handleStart,
             onPlayDefault: onPlayDefault,
+            onBackToMenu: onBackToMenu,
           ),
           Expanded(
             child: Row(
@@ -64,11 +67,13 @@ class _EditorToolbar extends StatelessWidget {
     required this.controller,
     required this.onStart,
     required this.onPlayDefault,
+    this.onBackToMenu,
   });
 
   final EditorController controller;
   final VoidCallback onStart;
   final VoidCallback onPlayDefault;
+  final VoidCallback? onBackToMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +88,18 @@ class _EditorToolbar extends StatelessWidget {
         listenable: controller,
         builder: (context, _) => Row(
           children: [
+            if (onBackToMenu != null) ...[
+              OutlinedButton.icon(
+                onPressed: onBackToMenu,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFCBD5E1),
+                  side: const BorderSide(color: Color(0xFF334155)),
+                ),
+                icon: const Icon(Icons.arrow_back, size: 18),
+                label: const Text('Menü'),
+              ),
+              const SizedBox(width: 10),
+            ],
             const Icon(Icons.tram, color: Color(0xFF38BDF8), size: 22),
             const SizedBox(width: 10),
             const Text(
@@ -93,82 +110,97 @@ class _EditorToolbar extends StatelessWidget {
                 color: Color(0xFFF1F5F9),
               ),
             ),
-            const Spacer(),
-            OutlinedButton.icon(
-              onPressed: controller.toggleEraseMode,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: controller.eraseMode
-                    ? const Color(0xFFFCA5A5)
-                    : const Color(0xFFCBD5E1),
-                backgroundColor: controller.eraseMode
-                    ? const Color(0x33EF4444)
-                    : null,
-                side: BorderSide(
-                  color: controller.eraseMode
-                      ? const Color(0xFFEF4444)
-                      : const Color(0xFF334155),
-                ),
-              ),
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Törlés'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: controller.clear,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFCBD5E1),
-                side: const BorderSide(color: Color(0xFF334155)),
-              ),
-              icon: const Icon(Icons.layers_clear, size: 18),
-              label: const Text('Ürítés'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () => showEditorExportDialog(context, controller),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFCBD5E1),
-                side: const BorderSide(color: Color(0xFF334155)),
-              ),
-              icon: const Icon(Icons.upload_file, size: 18),
-              label: const Text('Mentés / Export'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () => showEditorImportDialog(context, controller),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFCBD5E1),
-                side: const BorderSide(color: Color(0xFF334155)),
-              ),
-              icon: const Icon(Icons.download, size: 18),
-              label: const Text('Betöltés'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: onPlayDefault,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF93C5FD),
-                side: const BorderSide(color: Color(0xFF1E40AF)),
-              ),
-              icon: const Icon(Icons.map_outlined, size: 18),
-              label: const Text('Alap pálya'),
-            ),
             const SizedBox(width: 12),
-            FilledButton.icon(
-              onPressed: onStart,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF16A34A),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-              ),
-              icon: const Icon(Icons.play_arrow, size: 20),
-              label: const Text(
-                'START',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: controller.toggleEraseMode,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: controller.eraseMode
+                              ? const Color(0xFFFCA5A5)
+                              : const Color(0xFFCBD5E1),
+                          backgroundColor: controller.eraseMode
+                              ? const Color(0x33EF4444)
+                              : null,
+                          side: BorderSide(
+                            color: controller.eraseMode
+                                ? const Color(0xFFEF4444)
+                                : const Color(0xFF334155),
+                          ),
+                        ),
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const Text('Törlés'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: controller.clear,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFCBD5E1),
+                          side: const BorderSide(color: Color(0xFF334155)),
+                        ),
+                        icon: const Icon(Icons.layers_clear, size: 18),
+                        label: const Text('Ürítés'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            showEditorExportDialog(context, controller),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFCBD5E1),
+                          side: const BorderSide(color: Color(0xFF334155)),
+                        ),
+                        icon: const Icon(Icons.upload_file, size: 18),
+                        label: const Text('Mentés / Export'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            showEditorImportDialog(context, controller),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFCBD5E1),
+                          side: const BorderSide(color: Color(0xFF334155)),
+                        ),
+                        icon: const Icon(Icons.download, size: 18),
+                        label: const Text('Betöltés'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: onPlayDefault,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF93C5FD),
+                          side: const BorderSide(color: Color(0xFF1E40AF)),
+                        ),
+                        icon: const Icon(Icons.map_outlined, size: 18),
+                        label: const Text('Alap pálya'),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        onPressed: onStart,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        icon: const Icon(Icons.play_arrow, size: 20),
+                        label: const Text(
+                          'START',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

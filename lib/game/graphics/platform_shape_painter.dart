@@ -34,6 +34,7 @@ Path platformShapePath(
         ),
       ),
     PlatformShape.triangle => _trianglePath(radius * 1.15),
+    PlatformShape.wye => _octagonPath(radius),
   };
 }
 
@@ -41,6 +42,16 @@ Path _trianglePath(double reach) {
   final path = Path();
   for (var i = 0; i < 3; i++) {
     final a = i * 2 * math.pi / 3 - math.pi / 2;
+    final p = Offset(math.cos(a) * reach, math.sin(a) * reach);
+    i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+  }
+  return path..close();
+}
+
+Path _octagonPath(double reach) {
+  final path = Path();
+  for (var i = 0; i < 8; i++) {
+    final a = i * math.pi / 4 + math.pi / 8;
     final p = Offset(math.cos(a) * reach, math.sin(a) * reach);
     i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
   }

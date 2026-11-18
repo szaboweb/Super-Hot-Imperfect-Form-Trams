@@ -6,12 +6,14 @@ import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../audio/audio_service.dart';
 import '../core/game_log.dart';
 import 'components/atmosphere_component.dart';
 import 'components/building_component.dart';
 import 'components/crash_effect_component.dart';
 import 'components/crossover_component.dart';
 import 'components/depth_component.dart';
+import 'components/gate_component.dart';
 import 'components/ground_component.dart';
 import 'components/hazard_component.dart';
 import 'components/headlight_component.dart';
@@ -21,7 +23,9 @@ import 'components/signal_component.dart';
 import 'components/smoke_component.dart';
 import 'components/spark_effect_component.dart';
 import 'components/track_component.dart';
+import 'components/track_zone_component.dart';
 import 'components/tram_component.dart';
+import 'components/tram_trailer_component.dart';
 import 'components/turntable_disc_component.dart';
 import 'levels/level_data.dart';
 import 'levels/level_loader_system.dart';
@@ -29,14 +33,18 @@ import 'levels/level_repository.dart';
 import 'levels/prop_data.dart';
 import 'systems/crash_system.dart';
 import 'systems/score_system.dart';
+import 'systems/track_graph.dart';
 
 /// Root Flame game: loads [initialLevel] (or the first asset level) and builds
 /// the world layer by layer (see `RenderLayer`): depth, ground, track,
 /// entities, canopy, atmosphere + HUD.
 class TramGame extends FlameGame with HasKeyboardHandlerComponents {
-  TramGame({this.initialLevel});
+  TramGame({this.initialLevel, this.audio});
 
   final LevelData? initialLevel;
+
+  /// Optional sound-effects service triggered by switches, crashes, and goals.
+  final AudioService? audio;
 
   /// All trams of the loaded level, in spawn order.
   final List<TramComponent> trams = [];
@@ -121,18 +129,21 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
       DepthComponent(),
       _ground,
       for (final path in paths) TrackComponent(path: path),
+      for (final z in _runtime.zoneSystem.zones) TrackZoneComponent(zone: z),
       for (final h in _runtime.hazards)
         HazardComponent(
           kind: h.kind,
           position: Vector2(h.position.x, h.position.y),
           headingRad: h.headingRad,
         ),
+      for (final g in _runtime.gateSystem.gates) GateComponent(gate: g),
       for (final p in _level.props.where((p) => p.type == PropType.signal))
         SignalComponent(
           position: Vector2(p.x, p.y),
           rotationDeg: p.rotationDeg,
           green: p.state != 'red',
         ),
+      for (final tram in trams) TramTrailerComponent(lead: tram),
       ...trams,
       for (final c in _runtime.crossovers) ..._crossoverComponents(c),
       for (final p in _level.props.where((p) => p.type == PropType.building))
@@ -167,10 +178,15 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
             color: Color(spawn.color),
           )
           ..switches = _runtime.switches
+          ..gates = _runtime.gateSystem
+          ..zones = _runtime.zoneSystem
           ..occupiedPlatformCenters = _occupiedPlatformCenters
           ..onSkid = _ground.addSkidMark
-          ..onTurnHit = (p) =>
-              world.add(SparkEffectComponent(position: p.clone()));
+          ..onTurnHit = (p) {
+            world.add(SparkEffectComponent(position: p.clone()));
+            audio?.playSwitchHit();
+          }
+          ..onTurnMiss = () => audio?.playSwitchMiss();
     if (spawn.controls == null && spawn.speed != 0) {
       _aiCruiseSpeeds[tram] = spawn.speed;
     }
@@ -196,7 +212,11 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
     for (final spawn in _runtime.spawnSystem.advance(dt)) {
       final tram = _createTram(spawn);
       trams.add(tram);
-      world.addAll([tram, HeadlightComponent(tram: tram)]);
+      world.addAll([
+        tram,
+        TramTrailerComponent(lead: tram),
+        HeadlightComponent(tram: tram),
+      ]);
       GameLog.event(
         'tram',
         '${tram.label} spawned at '
@@ -230,7 +250,7 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
   }
 
   void _stepCrashes() {
-    final result = _runtime.crashSystem.step([
+    final poses = [
       for (final (i, t) in trams.indexed)
         (
           index: i,
@@ -243,7 +263,13 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
           isRidingTurntable: t.ride != null,
           isCrashed: t.isCrashed,
         ),
-    ]);
+    ];
+    final result = _runtime.crashSystem.step(poses);
+    final gateCrashes = _runtime.gateSystem.step(
+      poses,
+      onAutoClosed: (g) =>
+          GameLog.event('switch', '${g.data.id}: closed behind tram'),
+    );
     for (final tr in result.transitions) {
       final p = tr.nextPath.positionAt(tr.nextDistance);
       trams[tr.tramIndex]
@@ -252,7 +278,7 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
         ..position.setValues(p.x, p.y)
         ..angle = tr.nextPath.headingAt(tr.nextDistance);
     }
-    for (final event in result.crashes) {
+    for (final event in [...result.crashes, ...gateCrashes]) {
       _recordCrash(event);
     }
   }
@@ -267,10 +293,12 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
         hazard: event.hazard,
       ),
     );
+    audio?.playCrash(intoWater: event.hazard == TrackEnd.river);
     _shakeTimer = _shakeDurationSec;
     GameLog.event('crash', event.description);
     if (!_runtime.scoreSystem.record(event)) return;
     goalMetNotifier.value = true;
+    audio?.playGoalReached();
     GameLog.event(
       'level',
       'Goal reached: ${_runtime.scoreSystem.crashCount}/'

@@ -99,6 +99,19 @@ class TurntableDiscComponent extends PositionComponent {
           ..moveTo(-4, 9)
           ..lineTo(0, 14)
           ..lineTo(4, 9),
+      TurntableMovement.curve =>
+        Path()
+          ..moveTo(0, 14)
+          ..lineTo(0, 2)
+          ..quadraticBezierTo(0, -8, -12, -8)
+          ..moveTo(0, 2)
+          ..quadraticBezierTo(0, -8, 12, -8)
+          ..moveTo(-8, -12)
+          ..lineTo(-12, -8)
+          ..lineTo(-8, -4)
+          ..moveTo(8, -12)
+          ..lineTo(12, -8)
+          ..lineTo(8, -4),
     };
     canvas.drawPath(path, cue);
   }

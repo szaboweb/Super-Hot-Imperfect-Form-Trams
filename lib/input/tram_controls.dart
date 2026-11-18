@@ -45,6 +45,11 @@ enum TramControls {
     return up - down;
   }
 
+  /// Horizontal turn steering: -1 (left), 0 (none), +1 (right) independent of throttle.
+  double turnSteerFor(Set<LogicalKeyboardKey> keysPressed) =>
+      (keysPressed.contains(turnRight) ? 1.0 : 0.0) -
+      (keysPressed.contains(turnLeft) ? 1.0 : 0.0);
+
   /// Screen-space unit vector for the held directional keys, or null if none.
   math.Point<double>? desiredDirectionFor(Set<LogicalKeyboardKey> keysPressed) {
     final dx =

@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 
 import '../systems/crash_system.dart';
+import '../systems/gate_system.dart';
 import '../systems/score_system.dart';
 import '../systems/spawn_system.dart';
 import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
+import '../systems/track_zone_system.dart';
 import '../systems/tram_ai_system.dart';
 import '../systems/turntable_switch_system.dart';
 import '../systems/turntable_turn.dart';
@@ -31,6 +33,8 @@ typedef LoadedLevelRuntime = ({
   ScoreSystem scoreSystem,
   CrashSystem crashSystem,
   TramAiSystem aiSystem,
+  GateSystem gateSystem,
+  TrackZoneSystem zoneSystem,
   List<HazardPlacement> hazards,
 });
 
@@ -50,6 +54,8 @@ class LevelLoaderSystem {
     final switches = TurntableSwitchSystem([
       for (final c in crossovers) ...c.turns,
     ]);
+    final gateSystem = GateSystem(gates: level.gates, paths: paths);
+    final zoneSystem = TrackZoneSystem(zones: level.zones, paths: paths);
     return (
       paths: paths,
       crossovers: crossovers,
@@ -57,8 +63,15 @@ class LevelLoaderSystem {
       spawnSystem: SpawnSystem(level.spawns),
       scoreSystem: ScoreSystem(crashGoal: level.crashGoal),
       crashSystem: CrashSystem(graph: graph, paths: paths),
-      aiSystem: TramAiSystem(graph: graph, paths: paths, switches: switches),
-      hazards: _extractHazards(level.segments, paths),
+      aiSystem: TramAiSystem(
+        graph: graph,
+        paths: paths,
+        switches: switches,
+        gates: gateSystem,
+      ),
+      gateSystem: gateSystem,
+      zoneSystem: zoneSystem,
+      hazards: _extractHazards(level.segments, paths, level.crossovers),
     );
   }
 
@@ -85,7 +98,11 @@ class LevelLoaderSystem {
   static List<HazardPlacement> _extractHazards(
     List<TrackSegment> segments,
     Map<String, TrackPath> paths,
+    List<CrossoverData> crossovers,
   ) {
+    bool atCrossover(math.Point<double> pos) =>
+        crossovers.any((c) => c.center.distanceTo(pos) <= 4.0);
+
     final incomingConnected = <String>{
       for (final s in segments)
         if (s.end == TrackEnd.connected && s.nextSegment != null)
@@ -95,17 +112,19 @@ class LevelLoaderSystem {
     for (final seg in segments) {
       final path = paths[seg.id];
       if (path == null || path.isClosed) continue;
-      if (seg.end != TrackEnd.connected) {
+      final endPos = path.positionAt(path.length);
+      if (seg.end != TrackEnd.connected && !atCrossover(endPos)) {
         hazards.add((
           kind: seg.end,
-          position: path.positionAt(path.length),
+          position: endPos,
           headingRad: path.headingAt(path.length),
         ));
       }
-      if (!incomingConnected.contains(seg.id)) {
+      final startPos = path.positionAt(0);
+      if (!incomingConnected.contains(seg.id) && !atCrossover(startPos)) {
         hazards.add((
           kind: TrackEnd.deadEnd,
-          position: path.positionAt(0),
+          position: startPos,
           headingRad: path.headingAt(0) + math.pi,
         ));
       }
