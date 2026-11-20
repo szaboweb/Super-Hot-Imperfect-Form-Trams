@@ -81,16 +81,18 @@ class CrossoverComponent extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
-    final rider = trams
-        .where((t) => t.ride != null && turns.contains(t.ride!.turn))
-        .firstOrNull;
+    final rider = trams.where((t) {
+      final ride = t.ride;
+      return ride != null && turns.contains(ride.turn);
+    }).firstOrNull;
     if (rider != null && rider != _rider) {
       lastUser = rider.controls;
     }
     _rider = rider;
-    activeRide = rider?.ride;
-    if (rider != null) {
-      turntableAngle = rider.ride!.angle;
+    final ride = rider?.ride;
+    activeRide = ride;
+    if (ride != null) {
+      turntableAngle = ride.angle;
     } else {
       final step = (pi / 2) / returnSeconds * dt;
       turntableAngle = turntableAngle.abs() <= step

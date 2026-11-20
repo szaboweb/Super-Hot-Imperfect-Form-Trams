@@ -25,31 +25,76 @@ class EditorPass {
 }
 
 /// A closed ring or open dead-end/wye-stem spur of passes (one level segment).
-class EditorRing {
-  /// Creates a segment of [passes]; open segments carry [startStub] and [endStub].
-  const EditorRing(
-    this.passes, {
-    this.isClosed = true,
-    this.startStub,
-    this.endStub,
-  });
+sealed class EditorRing {
+  /// Base constructor for an ordered list of [passes].
+  const EditorRing(this.passes);
+
+  /// Creates a closed loop segment of [passes].
+  const factory EditorRing.closed(List<EditorPass> passes) = ClosedEditorRing;
+
+  /// Creates an open spur segment between [startStub] and [endStub].
+  const factory EditorRing.open(
+    List<EditorPass> passes, {
+    required EditorStub startStub,
+    required EditorStub endStub,
+  }) = OpenEditorRing;
 
   /// Ordered passes traversing this segment.
   final List<EditorPass> passes;
 
   /// True for closed loops; false for spur segments between two stubs.
-  final bool isClosed;
+  bool get isClosed;
 
-  /// Entry stub when [isClosed] is false.
-  final EditorStub? startStub;
+  /// Entry stub when this is an [OpenEditorRing], else null.
+  EditorStub? get startStub;
 
-  /// Exit stub when [isClosed] is false.
-  final EditorStub? endStub;
+  /// Exit stub when this is an [OpenEditorRing], else null.
+  EditorStub? get endStub;
 
   /// Same segment with pass order, pass directions, and stubs reversed.
-  EditorRing get reversed => EditorRing(
+  EditorRing get reversed;
+}
+
+/// Closed loop segment of rail passes.
+final class ClosedEditorRing extends EditorRing {
+  /// Creates a closed loop segment from ordered [passes].
+  const ClosedEditorRing(super.passes);
+
+  @override
+  bool get isClosed => true;
+
+  @override
+  EditorStub? get startStub => null;
+
+  @override
+  EditorStub? get endStub => null;
+
+  @override
+  ClosedEditorRing get reversed =>
+      ClosedEditorRing([for (final p in passes.reversed) p.reversed]);
+}
+
+/// Open dead-end or wye-stem spur segment between [startStub] and [endStub].
+final class OpenEditorRing extends EditorRing {
+  /// Creates an open spur segment from [passes], [startStub], and [endStub].
+  const OpenEditorRing(
+    super.passes, {
+    required this.startStub,
+    required this.endStub,
+  });
+
+  @override
+  final EditorStub startStub;
+
+  @override
+  final EditorStub endStub;
+
+  @override
+  bool get isClosed => false;
+
+  @override
+  OpenEditorRing get reversed => OpenEditorRing(
     [for (final p in passes.reversed) p.reversed],
-    isClosed: isClosed,
     startStub: endStub,
     endStub: startStub,
   );
@@ -65,7 +110,8 @@ class EditorTracer {
   EditorTracer(this.grid) {
     final cells = grid.rails.keys.toList()..sort(_compareCells);
     for (final cell in cells) {
-      _initRail(cell, _require(grid.railAt(cell), 'rail at $cell'));
+      final piece = grid.railAt(cell);
+      if (piece != null) _initRail(cell, piece);
     }
     for (final cell in cells) {
       if (grid.railAt(cell) != EditorPiece.bufferStop) continue;
@@ -100,7 +146,7 @@ class EditorTracer {
       for (final cell in cells)
         if (_wyeErrors.contains(cell))
           EditorIssue(EditorMessages.wyeConnections(cell), cell: cell)
-        else if (_require(_bufferSides[cell], 'buffer at $cell').length != 1)
+        else if (_bufferSides[cell] case final sides? when sides.length != 1)
           EditorIssue(EditorMessages.bufferConnections(cell), cell: cell),
     ];
   }
@@ -140,7 +186,7 @@ class EditorTracer {
     for (final stub in sortedStubs) {
       if (seenStubs.contains((stub.cell, stub.side))) continue;
       final ring = _walkStub(stub, seenStubs, seenPairs);
-      final endStub = _require(ring.endStub, 'endStub from $stub');
+      final endStub = ring.endStub;
       assert(allStubs.contains((endStub.cell, endStub.side)));
       result.add(ring);
     }
@@ -155,7 +201,7 @@ class EditorTracer {
     return result;
   }
 
-  EditorRing _walkStub(
+  OpenEditorRing _walkStub(
     EditorStub startStub,
     Set<(EditorCell, EditorSide)> seenStubs,
     Set<(EditorCell, int)> seenPairs,
@@ -173,15 +219,18 @@ class EditorTracer {
       entry = exit.opposite;
     }
     seenStubs.addAll([(startStub.cell, startStub.side), (next, entry)]);
-    return EditorRing(
+    return OpenEditorRing(
       passes,
-      isClosed: false,
       startStub: startStub,
       endStub: (cell: next, side: entry),
     );
   }
 
-  EditorRing _walk(EditorCell start, int index, Set<(EditorCell, int)> seen) {
+  ClosedEditorRing _walk(
+    EditorCell start,
+    int index,
+    Set<(EditorCell, int)> seen,
+  ) {
     final pair = _pairsAt(start)[index];
     var exit = _startPriority.firstWhere((s) => s == pair.a || s == pair.b);
     var pass = EditorPass(start, exit == pair.a ? pair.b : pair.a, exit);
@@ -191,12 +240,15 @@ class EditorTracer {
       passes.add(pass);
       final next = _neighbour(pass.cell, pass.to);
       final entry = pass.to.opposite;
-      final nextPair = _require(_pairAt(next, entry), 'pair at $next');
+      final nextPair = _pairAt(next, entry);
+      if (nextPair == null) {
+        throw StateError('Unconnected rail pair at $next ($entry)');
+      }
       exit = nextPair.a == entry ? nextPair.b : nextPair.a;
       pass = EditorPass(next, entry, exit);
       if (pass.cell == start && _indexOf(next, entry) == index) break;
     }
-    return EditorRing(passes);
+    return ClosedEditorRing(passes);
   }
 
   void _initRail(EditorCell cell, EditorPiece piece) {
@@ -257,12 +309,10 @@ class EditorTracer {
   int _indexOf(EditorCell cell, EditorSide side) =>
       _pairsAt(cell).indexWhere((p) => p.a == side || p.b == side);
 
-  List<EditorSidePair> _pairsAt(EditorCell cell) =>
-      _require(_pairs[cell], 'pairs at $cell');
-
-  static T _require<T>(T? value, String detail) {
-    if (value == null) throw StateError('Missing $detail');
-    return value;
+  List<EditorSidePair> _pairsAt(EditorCell cell) {
+    final pairs = _pairs[cell];
+    if (pairs == null) throw StateError('Missing pairs at $cell');
+    return pairs;
   }
 
   EditorSidePair? _pairAt(EditorCell cell, EditorSide side) {

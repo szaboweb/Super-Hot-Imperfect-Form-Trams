@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
+import 'level_json_reader.dart';
 
 /// Surface speed-modifier kind for special rails (`zones` in the level JSON).
 enum TrackZoneKind {
@@ -29,10 +30,10 @@ class TrackZoneData {
 
   /// Parses one entry of the level JSON `zones` list.
   factory TrackZoneData.fromJson(Map<String, dynamic> json) => TrackZoneData(
-    kind: TrackZoneKind.parse(json['kind']),
-    x: (json['x'] as num).toDouble(),
-    y: (json['y'] as num).toDouble(),
-    radius: (json['radius'] as num?)?.toDouble() ?? 32,
+    kind: TrackZoneKind.parse(readRequiredString(json, 'kind')),
+    x: readRequiredDouble(json, 'x'),
+    y: readRequiredDouble(json, 'y'),
+    radius: readOptionalDouble(json, 'radius', 32),
   );
 
   /// Surface modifier type ([TrackZoneKind.ice] or [TrackZoneKind.melted]).

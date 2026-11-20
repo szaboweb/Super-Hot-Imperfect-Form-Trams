@@ -4,6 +4,7 @@ import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
 import '../systems/turntable_movement.dart';
 import '../systems/turntable_turn_builder.dart';
+import 'level_json_reader.dart';
 
 /// One L-turn between two segments, as written in the level JSON (`links`).
 typedef CrossoverLinkData = ({String from, String to});
@@ -54,35 +55,32 @@ class CrossoverData {
   });
 
   factory CrossoverData.fromJson(Map<String, dynamic> json) {
-    final offset = json['signalOffset'] as List?;
-    final stem = json['stemPoint'] as List?;
-    final fwd = json['forward'] as List?;
+    final offset = readOptionalPoint2D(json, 'signalOffset');
+    final stem = readOptionalPoint2D(json, 'stemPoint');
+    final fwd = readOptionalPoint2D(json, 'forward');
     return CrossoverData(
-      id: json['id'] as String,
-      x: (json['x'] as num).toDouble(),
-      y: (json['y'] as num).toDouble(),
-      radius: (json['radius'] as num?)?.toDouble() ?? 48,
+      id: readRequiredString(json, 'id'),
+      x: readRequiredDouble(json, 'x'),
+      y: readRequiredDouble(json, 'y'),
+      radius: readOptionalDouble(json, 'radius', 48),
       shape: PlatformShape.parse(json['platformShape']),
-      signalDx: (offset?[0] as num?)?.toDouble() ?? -56,
-      signalDy: (offset?[1] as num?)?.toDouble() ?? -50,
-      stemX: stem != null && stem.isNotEmpty
-          ? (stem[0] as num?)?.toDouble()
-          : null,
-      stemY: stem != null && stem.length > 1
-          ? (stem[1] as num?)?.toDouble()
-          : null,
-      forwardDx: fwd != null && fwd.isNotEmpty
-          ? (fwd[0] as num?)?.toDouble()
-          : null,
-      forwardDy: fwd != null && fwd.length > 1
-          ? (fwd[1] as num?)?.toDouble()
-          : null,
+      signalDx: offset?.$1 ?? -56,
+      signalDy: offset?.$2 ?? -50,
+      stemX: stem?.$1,
+      stemY: stem?.$2,
+      forwardDx: fwd?.$1,
+      forwardDy: fwd?.$2,
       links: [
-        for (final l in (json['links'] as List? ?? const []))
-          (from: (l as Map)['from'] as String, to: l['to'] as String),
+        for (final rawLink in readOptionalList(json, 'links'))
+          _linkFromJson(readMapItem(rawLink, 'a "links" elem')),
       ],
     );
   }
+
+  static CrossoverLinkData _linkFromJson(Map<String, dynamic> map) => (
+    from: readRequiredString(map, 'from'),
+    to: readRequiredString(map, 'to'),
+  );
 
   final String id;
 
@@ -112,12 +110,15 @@ class CrossoverData {
 
   math.Point<double> get center => math.Point(x, y);
 
-  math.Point<double>? get stemPoint =>
-      (stemX != null && stemY != null) ? math.Point(stemX!, stemY!) : null;
+  math.Point<double>? get stemPoint => switch ((stemX, stemY)) {
+    (final double sx, final double sy) => math.Point(sx, sy),
+    _ => null,
+  };
 
-  math.Point<double>? get forward => (forwardDx != null && forwardDy != null)
-      ? math.Point(forwardDx!, forwardDy!)
-      : null;
+  math.Point<double>? get forward => switch ((forwardDx, forwardDy)) {
+    (final double dx, final double dy) => math.Point(dx, dy),
+    _ => null,
+  };
 
   /// How the platform moves a tram, from its shape.
   TurntableMovement get movement => switch (shape) {

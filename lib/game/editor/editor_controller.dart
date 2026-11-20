@@ -72,7 +72,7 @@ class EditorController extends ChangeNotifier {
   /// Applies the active tool (erase or selected piece) on a cell tap.
   EditorEditResult handleCellTap(EditorCell cell) {
     if (_eraseMode) return removeAt(cell);
-    if (_selectedPiece != null) return placePiece(_selectedPiece!, cell);
+    if (_selectedPiece case final piece?) return placePiece(piece, cell);
     return EditorEditResult.nothingThere;
   }
 
@@ -101,8 +101,7 @@ class EditorController extends ChangeNotifier {
     } else {
       _errors = List.unmodifiable(result.errors);
       _errorCells = Set.unmodifiable({
-        for (final issue in result.issues)
-          if (issue.cell != null) issue.cell!,
+        for (final issue in result.issues) ?issue.cell,
       });
       for (final error in result.errors) {
         GameLog.event('editor', error);

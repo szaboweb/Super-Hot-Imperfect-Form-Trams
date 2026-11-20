@@ -1,11 +1,12 @@
 # Super Hot Imperfect Form Trams
 
-Top-down tram game made with Flutter + Flame. Brakeless trams race through a European-style city;
-flip the switches behind them to send the next ones into crashes.
+Top-down tram game made with Flutter + Flame. Trams with throttle, overheating brakes, and
+SHIFT-controlled track switches race through a European-style city; flip switches and gates to
+send rivals into crashes or hazards.
 
-> **Case study:** this repository is a small but complete example of a game built with
-> **Flutter + Flame + Dart** — data-driven levels, a layered render pipeline, pure-Dart game
-> systems with unit tests, and CI.
+> **Case study:** this repository is a playable work-in-progress case study built with
+> **Flutter + Flame + Dart** — Canvas-first rendering, synthesized WAV SFX, 3 levels + track editor,
+> pure-Dart game systems with unit tests, and CI (sprite art and music not added yet).
 
 ```sh
 flutter pub get
@@ -17,7 +18,7 @@ flutter test
 
 | Area | Choice |
 |------|--------|
-| Language / SDK | Dart 3.13, Flutter 3.47 |
+| Language / SDK | Dart ^3.13.7 (tested on 3.14.0), Flutter 3.50 |
 | Game engine | [Flame](https://flame-engine.org) (`FlameGame`, components, keyboard events) |
 | Audio | `flame_audio` |
 | Native interop | `dart:ffi` via `ffi` (Windows sticky-keys guard, with a stub for other platforms) |
@@ -30,18 +31,24 @@ flutter test
 
 ```text
 lib/
-  main.dart                  App entry point
-  core/                      Logging, platform guard (conditional import: ffi / stub)
+  main.dart                  App entry point (MaterialApp, campaign & editor navigation)
+  audio/                     Mute control and cooldown-gated SFX playback (AudioService)
+  core/                      Logging (GameLog), cross-platform JSON file dialogs (JsonFileService),
+                             and StickyKeysGuard (conditional import: ffi / stub)
   input/                     Keyboard controls
+  ui/                        Menus, race/result/pause overlays, and track editor UI
   game/
-    tram_game.dart           Root FlameGame: loads a level and builds the world layer by layer
+    tram_game.dart           Root FlameGame: loads a level and wires world & systems
+    tram_world_builder.dart  Assembles world layers and tram/hazard/crossover components
     components/              Flame components (track, trams, signals, HUD, atmosphere, ...)
+    editor/                  Pure-Dart track editor model, validator, and level builder
     graphics/                Render layers (depth -> ground -> track -> entities -> canopy -> HUD)
-                             and pixel-art helpers
+                             and Canvas / pixel-art helpers
     levels/                  Level data models + repository (JSON in assets/data/levels)
-    systems/                 Pure-Dart logic: track graph, paths, turntable switching/turning
-assets/                      Images, audio, level JSON
-test/                        Unit and component tests mirroring lib/
+    systems/                 Pure-Dart logic: track graph, paths, physics, AI, gates, zones, switching
+assets/                      Level JSON + synthesized .wav SFX (image/music dirs are placeholders;
+                             Canvas rendering is active by default)
+test/                        Unit, widget, and component tests mirroring lib/
 tools/                       Helper scripts (web build, sprite export/render)
 ```
 

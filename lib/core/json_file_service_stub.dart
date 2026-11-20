@@ -1,5 +1,6 @@
-/// File name and UTF-8 text content returned by [JsonFileService.pickJson].
-typedef PickedJsonFile = ({String name, String contents});
+import 'json_file_name.dart' as fn;
+
+export 'json_file_name.dart' show PickedJsonFile;
 
 /// Cross-platform service saving and opening `.json` files from disk.
 class JsonFileService {
@@ -10,14 +11,11 @@ class JsonFileService {
   final Future<String?> Function(String suggestedName, String contents)? onSave;
 
   /// Optional override used when picking a JSON file (primarily for tests).
-  final Future<PickedJsonFile?> Function()? onPick;
+  final Future<fn.PickedJsonFile?> Function()? onPick;
 
   /// Ensures [name] is non-empty and carries a `.json` file extension.
-  static String normalizeJsonFileName(String name) {
-    final trimmed = name.trim();
-    if (trimmed.isEmpty) return 'sajat_palya.json';
-    return trimmed.toLowerCase().endsWith('.json') ? trimmed : '$trimmed.json';
-  }
+  static String normalizeJsonFileName(String name) =>
+      fn.normalizeJsonFileName(name);
 
   /// Saves [contents] under [suggestedName], returning the saved name/path or `null` if cancelled.
   Future<String?> saveJson({
@@ -31,7 +29,7 @@ class JsonFileService {
   }
 
   /// Prompts the user to pick a `.json` file, returning `null` if cancelled.
-  Future<PickedJsonFile?> pickJson() async {
+  Future<fn.PickedJsonFile?> pickJson() async {
     final hook = onPick;
     if (hook != null) return hook();
     return null;

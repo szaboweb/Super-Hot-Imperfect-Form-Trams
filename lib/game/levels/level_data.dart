@@ -4,6 +4,7 @@ import '../../input/tram_controls.dart';
 import '../systems/track_graph.dart';
 import 'crossover_data.dart';
 import 'gate_data.dart';
+import 'level_json_reader.dart';
 import 'prop_data.dart';
 import 'track_zone_data.dart';
 
@@ -19,19 +20,19 @@ class SpawnData {
   });
 
   factory SpawnData.fromJson(Map<String, dynamic> json) {
-    final controlsName = json['controls'] as String?;
+    final controlsName = readOptionalString(json, 'controls');
     return SpawnData(
-      segment: json['segment'] as String,
-      time: (json['time'] as num).toDouble(),
-      speed: (json['speed'] as num).toDouble(),
+      segment: readRequiredString(json, 'segment'),
+      time: readRequiredDouble(json, 'time'),
+      speed: readRequiredDouble(json, 'speed'),
       controls: controlsName == null
           ? null
           : TramControls.values.asNameMap()[controlsName] ??
                 (throw FormatException(
                   'Ismeretlen irányítás: "$controlsName"',
                 )),
-      startDistance: (json['startDistance'] as num?)?.toDouble() ?? 0,
-      color: (json['color'] as num?)?.toInt() ?? 0xFFE4572E,
+      startDistance: readOptionalDouble(json, 'startDistance', 0),
+      color: readOptionalInt(json, 'color', 0xFFE4572E),
     );
   }
 
@@ -71,40 +72,41 @@ class LevelData {
 
   /// Throws [FormatException] listing every problem found in [json].
   factory LevelData.fromJson(Map<String, dynamic> json) {
-    final id = json['id'] as String? ?? '<unknown>';
-    final bounds = json['bounds'] as Map<String, dynamic>?;
+    final id = readOptionalString(json, 'id') ?? '<unknown>';
+    final bounds = readOptionalMap(json, 'bounds');
+    final goal = readOptionalMap(json, 'goal');
     final level = LevelData._(
       id: id,
-      name: json['name'] as String?,
-      city: json['city'] as String? ?? '',
-      tileSize: (json['tileSize'] as num?)?.toInt() ?? 64,
-      width: (bounds?['width'] as num?)?.toDouble() ?? 1040,
-      height: (bounds?['height'] as num?)?.toDouble() ?? 680,
+      name: readOptionalString(json, 'name'),
+      city: readOptionalString(json, 'city') ?? '',
+      tileSize: readOptionalInt(json, 'tileSize', 64),
+      width: bounds == null ? 1040 : readOptionalDouble(bounds, 'width', 1040),
+      height: bounds == null ? 680 : readOptionalDouble(bounds, 'height', 680),
       segments: [
-        for (final s in (json['segments'] as List? ?? const []))
-          _segmentFromJson(s as Map<String, dynamic>),
+        for (final s in readOptionalList(json, 'segments'))
+          _segmentFromJson(readMapItem(s, 'a "segments" elem')),
       ],
       spawns: [
-        for (final s in (json['spawns'] as List? ?? const []))
-          SpawnData.fromJson(s as Map<String, dynamic>),
+        for (final s in readOptionalList(json, 'spawns'))
+          SpawnData.fromJson(readMapItem(s, 'a "spawns" elem')),
       ],
       props: [
-        for (final p in (json['props'] as List? ?? const []))
-          PropData.fromJson(p as Map<String, dynamic>),
+        for (final p in readOptionalList(json, 'props'))
+          PropData.fromJson(readMapItem(p, 'a "props" elem')),
       ],
       crossovers: [
-        for (final c in (json['crossovers'] as List? ?? const []))
-          CrossoverData.fromJson(c as Map<String, dynamic>),
+        for (final c in readOptionalList(json, 'crossovers'))
+          CrossoverData.fromJson(readMapItem(c, 'a "crossovers" elem')),
       ],
       gates: [
-        for (final g in (json['gates'] as List? ?? const []))
-          GateData.fromJson(g as Map<String, dynamic>),
+        for (final g in readOptionalList(json, 'gates'))
+          GateData.fromJson(readMapItem(g, 'a "gates" elem')),
       ],
       zones: [
-        for (final z in (json['zones'] as List? ?? const []))
-          TrackZoneData.fromJson(z as Map<String, dynamic>),
+        for (final z in readOptionalList(json, 'zones'))
+          TrackZoneData.fromJson(readMapItem(z, 'a "zones" elem')),
       ],
-      crashGoal: ((json['goal'] as Map?)?['crashes'] as num?)?.toInt() ?? 0,
+      crashGoal: goal == null ? 0 : readOptionalInt(goal, 'crashes', 0),
     );
     final errors = level.validate();
     if (errors.isNotEmpty) {
@@ -207,22 +209,23 @@ class LevelData {
   }
 
   static TrackSegment _segmentFromJson(Map<String, dynamic> json) {
-    final endName = json['end'] as String? ?? 'connected';
+    final endName = readOptionalString(json, 'end') ?? 'connected';
     final end = TrackEnd.values.asNameMap()[endName];
     if (end == null) {
       throw FormatException('Ismeretlen sínvég: "$endName"');
     }
     return TrackSegment(
-      id: json['id'] as String,
+      id: readRequiredString(json, 'id'),
       end: end,
-      nextSegment: json['nextSegment'] as String?,
+      nextSegment: readOptionalString(json, 'nextSegment'),
       points: [
-        for (final p in (json['points'] as List? ?? const []))
-          Point<double>(
-            ((p as List)[0] as num).toDouble(),
-            (p[1] as num).toDouble(),
-          ),
+        for (final p in readOptionalList(json, 'points')) _pointFromJson(p),
       ],
     );
+  }
+
+  static Point<double> _pointFromJson(Object? raw) {
+    final (x, y) = readPoint2D(raw, 'A "points" koordináta');
+    return Point<double>(x, y);
   }
 }

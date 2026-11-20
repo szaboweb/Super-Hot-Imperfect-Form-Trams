@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
+import 'level_json_reader.dart';
 
 /// A track barrier (`gates` list in the level JSON) that closes automatically
 /// after a tram passes and opens when an approaching tram presses SHIFT.
@@ -16,10 +17,10 @@ class GateData {
 
   /// Parses one entry of the level JSON `gates` list.
   factory GateData.fromJson(Map<String, dynamic> json) => GateData(
-    id: json['id'] as String,
-    x: (json['x'] as num).toDouble(),
-    y: (json['y'] as num).toDouble(),
-    radius: (json['radius'] as num?)?.toDouble() ?? 36,
+    id: readRequiredString(json, 'id'),
+    x: readRequiredDouble(json, 'x'),
+    y: readRequiredDouble(json, 'y'),
+    radius: readOptionalDouble(json, 'radius', 36),
   );
 
   /// Unique gate identifier within the level.

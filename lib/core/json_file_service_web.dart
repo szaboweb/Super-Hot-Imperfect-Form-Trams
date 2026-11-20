@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:js_interop';
 
-/// File name and UTF-8 text content returned by [JsonFileService.pickJson].
-typedef PickedJsonFile = ({String name, String contents});
+import 'json_file_name.dart' as fn;
+
+export 'json_file_name.dart' show PickedJsonFile;
 
 @JS('document')
 external _DomDocument get _document;
@@ -39,14 +40,11 @@ class JsonFileService {
   final Future<String?> Function(String suggestedName, String contents)? onSave;
 
   /// Optional override used when picking a JSON file (primarily for tests).
-  final Future<PickedJsonFile?> Function()? onPick;
+  final Future<fn.PickedJsonFile?> Function()? onPick;
 
   /// Ensures [name] is non-empty and carries a `.json` file extension.
-  static String normalizeJsonFileName(String name) {
-    final trimmed = name.trim();
-    if (trimmed.isEmpty) return 'sajat_palya.json';
-    return trimmed.toLowerCase().endsWith('.json') ? trimmed : '$trimmed.json';
-  }
+  static String normalizeJsonFileName(String name) =>
+      fn.normalizeJsonFileName(name);
 
   /// Triggers a browser download of [contents] using [suggestedName].
   Future<String?> saveJson({
@@ -70,16 +68,16 @@ class JsonFileService {
   }
 
   /// Opens the browser file chooser for `.json` files and returns its text content.
-  Future<PickedJsonFile?> pickJson() async {
+  Future<fn.PickedJsonFile?> pickJson() async {
     final hook = onPick;
     if (hook != null) return hook();
-    final completer = Completer<PickedJsonFile?>();
+    final completer = Completer<fn.PickedJsonFile?>();
     final input = _document.createElement('input')
       ..setAttribute('type', 'file')
       ..setAttribute('accept', '.json,application/json')
       ..setAttribute('style', 'display:none');
 
-    void finish(PickedJsonFile? value) {
+    void finish(fn.PickedJsonFile? value) {
       if (!completer.isCompleted) completer.complete(value);
       input.remove();
     }

@@ -22,7 +22,7 @@ class EditorGeometry {
 
   /// Path distance from the ring start to the middle of the pass on [cell].
   double? distanceToCellMiddle(EditorRing ring, EditorCell cell) {
-    var along = ring.startStub != null ? _half : 0.0;
+    var along = ring is OpenEditorRing ? _half : 0.0;
     for (final p in ring.passes) {
       if (p.cell == cell) return along + passLength(p) / 2;
       along += passLength(p);
@@ -30,29 +30,29 @@ class EditorGeometry {
     return null;
   }
 
-  /// Polyline of [ring] (closed when [EditorRing.isClosed], else center-to-center
-  /// between [EditorRing.startStub] and [EditorRing.endStub]).
+  /// Polyline of [ring] (closed when [ClosedEditorRing], else center-to-center
+  /// between [OpenEditorRing.startStub] and [OpenEditorRing.endStub]).
   List<math.Point<double>> ringPoints(EditorRing ring) {
-    if (!ring.isClosed) {
-      final start = ring.startStub!;
-      final end = ring.endStub!;
-      final points = <math.Point<double>>[
-        grid.cellCenter(start.cell),
-        _edgeMidpoint(start.cell, start.side),
-      ];
-      for (final pass in ring.passes) {
-        points.addAll(_passPoints(pass).skip(1));
-      }
-      points.add(grid.cellCenter(end.cell));
-      return points;
+    switch (ring) {
+      case OpenEditorRing(:final startStub, :final endStub, :final passes):
+        final points = <math.Point<double>>[
+          grid.cellCenter(startStub.cell),
+          _edgeMidpoint(startStub.cell, startStub.side),
+        ];
+        for (final pass in passes) {
+          points.addAll(_passPoints(pass).skip(1));
+        }
+        points.add(grid.cellCenter(endStub.cell));
+        return points;
+      case ClosedEditorRing(:final passes):
+        final points = <math.Point<double>>[];
+        for (final pass in passes) {
+          final part = _passPoints(pass);
+          points.addAll(points.isEmpty ? part : part.skip(1));
+        }
+        points[points.length - 1] = points.first;
+        return points;
     }
-    final points = <math.Point<double>>[];
-    for (final pass in ring.passes) {
-      final part = _passPoints(pass);
-      points.addAll(points.isEmpty ? part : part.skip(1));
-    }
-    points[points.length - 1] = points.first;
-    return points;
   }
 
   math.Point<double> _edgeMidpoint(EditorCell cell, EditorSide side) {

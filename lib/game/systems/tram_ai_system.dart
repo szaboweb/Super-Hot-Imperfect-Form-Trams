@@ -97,12 +97,12 @@ class TramAiSystem {
   }
 
   void _advanceCooldowns(double dt) {
-    for (final key in _switchCooldowns.keys.toList()) {
-      final remaining = _switchCooldowns[key]! - dt;
+    for (final entry in _switchCooldowns.entries.toList()) {
+      final remaining = entry.value - dt;
       if (remaining <= 0) {
-        _switchCooldowns.remove(key);
+        _switchCooldowns.remove(entry.key);
       } else {
-        _switchCooldowns[key] = remaining;
+        _switchCooldowns[entry.key] = remaining;
       }
     }
   }

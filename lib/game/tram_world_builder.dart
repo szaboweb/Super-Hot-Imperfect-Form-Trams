@@ -117,7 +117,7 @@ class TramWorldBuilder {
   /// Platform centres currently occupied by any tram riding a crossover.
   Iterable<math.Point<double>> occupiedPlatformCenters() => [
     for (final other in trams)
-      if (other.ride != null) other.ride!.turn.center,
+      if (other.ride case final ride?) ride.turn.center,
   ];
 
   GroundComponent _createGround() => GroundComponent(

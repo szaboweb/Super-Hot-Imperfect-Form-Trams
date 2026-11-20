@@ -44,7 +44,8 @@ class TrackGraph {
   /// Resolves where a tram leaving [segmentId] ends up right now.
   /// Returns the next segment id, or the hazard that ends the segment.
   ({String? next, TrackEnd end}) advance(String segmentId) {
-    final seg = segments[segmentId]!;
+    final seg = segments[segmentId];
+    if (seg == null) throw StateError('Unknown track segment: "$segmentId"');
     if (seg.end != TrackEnd.connected) return (next: null, end: seg.end);
     return (next: seg.nextSegment, end: TrackEnd.connected);
   }

@@ -75,6 +75,20 @@ class LevelLoaderSystem {
     );
   }
 
+  static TrackPath _requirePath(
+    Map<String, TrackPath> paths,
+    String segmentId,
+    String crossoverId,
+  ) {
+    final path = paths[segmentId];
+    if (path == null) {
+      throw StateError(
+        'Missing path "$segmentId" for crossover "$crossoverId"',
+      );
+    }
+    return path;
+  }
+
   static List<LoadedCrossover> _buildCrossovers(
     List<CrossoverData> crossovers,
     Map<String, TrackPath> paths,
@@ -85,8 +99,8 @@ class LevelLoaderSystem {
         turns: [
           for (final link in data.links)
             ...TurntableTurnBuilder.buildAll(
-              from: paths[link.from]!,
-              to: paths[link.to]!,
+              from: _requirePath(paths, link.from, data.id),
+              to: _requirePath(paths, link.to, data.id),
               center: data.center,
               radius: data.radius,
               movement: data.movement,
@@ -107,8 +121,8 @@ class LevelLoaderSystem {
 
     final incomingConnected = <String>{
       for (final s in segments)
-        if (s.end == TrackEnd.connected && s.nextSegment != null)
-          s.nextSegment!,
+        if (s.nextSegment case final next? when s.end == TrackEnd.connected)
+          next,
     };
     final hazards = <HazardPlacement>[];
     for (final seg in segments) {

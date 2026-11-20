@@ -1,3 +1,5 @@
+import 'level_json_reader.dart';
+
 /// Kinds of level decoration/gameplay props placed by `props` in the level JSON.
 enum PropType {
   /// Flat-roofed house beside the track (drawn in the canopy layer).
@@ -23,19 +25,19 @@ class PropData {
   });
 
   factory PropData.fromJson(Map<String, dynamic> json) {
-    final name = json['type'] as String;
+    final name = readRequiredString(json, 'type');
     final type = PropType.values.asNameMap()[name];
     if (type == null) {
       throw FormatException('Ismeretlen tereptárgy-típus: "$name"');
     }
     return PropData(
       type: type,
-      x: (json['x'] as num).toDouble(),
-      y: (json['y'] as num).toDouble(),
-      width: (json['width'] as num?)?.toDouble() ?? 0,
-      height: (json['height'] as num?)?.toDouble() ?? 0,
-      rotationDeg: (json['rotation'] as num?)?.toDouble() ?? 0,
-      state: json['state'] as String?,
+      x: readRequiredDouble(json, 'x'),
+      y: readRequiredDouble(json, 'y'),
+      width: readOptionalDouble(json, 'width', 0),
+      height: readOptionalDouble(json, 'height', 0),
+      rotationDeg: readOptionalDouble(json, 'rotation', 0),
+      state: readOptionalString(json, 'state'),
     );
   }
 

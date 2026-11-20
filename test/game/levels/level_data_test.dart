@@ -132,4 +132,134 @@ void main() {
       ),
     );
   });
+
+  group('fromJson throws FormatException on malformed field types', () {
+    void expectMalformed(Map<String, dynamic> Function() mutate, String label) {
+      final json = mutate();
+      expect(
+        () => LevelData.fromJson(json),
+        throwsA(isA<FormatException>()),
+        reason: label,
+      );
+    }
+
+    test('top-level id, bounds, segments, spawns, and goal mismatches', () {
+      expectMalformed(() => validLevel()..['id'] = 123, 'non-string id');
+      expectMalformed(
+        () => validLevel()..['bounds'] = 'wide',
+        'non-map bounds',
+      );
+      expectMalformed(
+        () => validLevel()..['segments'] = <String, dynamic>{},
+        'non-list segments',
+      );
+      expectMalformed(() => validLevel()..['spawns'] = [42], 'non-map spawn');
+      expectMalformed(
+        () => validLevel()..['goal'] = {'crashes': 'one'},
+        'non-num goal.crashes',
+      );
+    });
+
+    test('nested segment, spawn, prop, crossover, gate, and zone errors', () {
+      expectMalformed(() {
+        final j = validLevel();
+        (j['segments'] as List)[0] = {'id': 99};
+        return j;
+      }, 'segment id not string');
+      expectMalformed(() {
+        final j = validLevel();
+        (j['spawns'] as List)[0] = {'segment': 'main', 'time': '0', 'speed': 1};
+        return j;
+      }, 'spawn time not num');
+      expectMalformed(() {
+        final j = validLevel();
+        (j['spawns'] as List)[0] = {'segment': 'main', 'time': 0};
+        return j;
+      }, 'spawn speed missing');
+      expectMalformed(
+        () => validLevel()
+          ..['props'] = [
+            {'type': 5, 'x': 0, 'y': 0},
+          ],
+        'prop type not string',
+      );
+      expectMalformed(
+        () => validLevel()
+          ..['props'] = [
+            {'type': 'signal', 'x': 'left', 'y': 0},
+          ],
+        'prop x not num',
+      );
+      expectMalformed(
+        () => validLevel()
+          ..['crossovers'] = [
+            {'id': 'sw', 'x': 'zero', 'y': 0, 'links': []},
+          ],
+        'crossover x not num',
+      );
+      expectMalformed(
+        () => validLevel()
+          ..['crossovers'] = [
+            {
+              'id': 'sw',
+              'x': 0,
+              'y': 0,
+              'links': ['bad'],
+            },
+          ],
+        'crossover link not map',
+      );
+      expectMalformed(
+        () => validLevel()
+          ..['gates'] = [
+            {'id': 7, 'x': 0, 'y': 0},
+          ],
+        'gate id not string',
+      );
+      expectMalformed(
+        () => validLevel()
+          ..['gates'] = [
+            {'id': 'g1', 'x': 0, 'y': 'top'},
+          ],
+        'gate y not num',
+      );
+      expectMalformed(
+        () => validLevel()
+          ..['zones'] = [
+            {'kind': 'ice', 'x': 'far', 'y': 0},
+          ],
+        'zone x not num',
+      );
+    });
+
+    test('short or non-numeric coordinate lists', () {
+      expectMalformed(() {
+        final j = validLevel();
+        (j['segments'] as List)[0]['points'] = [
+          [10],
+        ];
+        return j;
+      }, 'short segment point');
+      expectMalformed(() {
+        final j = validLevel();
+        (j['segments'] as List)[0]['points'] = [
+          ['a', 2],
+        ];
+        return j;
+      }, 'non-numeric segment point');
+      expectMalformed(
+        () => validLevel()
+          ..['crossovers'] = [
+            {
+              'id': 'sw',
+              'x': 0,
+              'y': 0,
+              'signalOffset': [1],
+              'links': [],
+            },
+          ],
+        'short signalOffset list',
+      );
+    });
+  });
 }

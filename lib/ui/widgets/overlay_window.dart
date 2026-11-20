@@ -53,8 +53,9 @@ class _OverlayWindowState extends State<OverlayWindow> {
   bool get _isCollapsed => widget.collapsed ?? _collapsed;
 
   void _toggle() {
-    if (widget.onToggleCollapsed != null) {
-      widget.onToggleCollapsed!();
+    final onToggle = widget.onToggleCollapsed;
+    if (onToggle != null) {
+      onToggle();
       return;
     }
     setState(() => _collapsed = !_collapsed);

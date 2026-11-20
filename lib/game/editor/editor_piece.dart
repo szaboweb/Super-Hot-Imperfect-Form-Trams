@@ -118,7 +118,7 @@ enum EditorPiece {
   /// Whether this piece accepts a rail connection on [side] (with [verticalInline] for auto-straight pieces).
   bool connectsToSide(EditorSide side, {bool verticalInline = false}) {
     if (isCrossing) return true;
-    if (isTSwitch) return side != tStemSide!.opposite;
+    if (tStemSide case final stem?) return side != stem.opposite;
     if (isAutoStraight) {
       return verticalInline ? !side.isHorizontal : side.isHorizontal;
     }

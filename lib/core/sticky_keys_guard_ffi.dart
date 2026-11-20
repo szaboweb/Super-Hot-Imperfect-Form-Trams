@@ -52,25 +52,26 @@ class StickyKeysGuard {
     }
   }
 
-  int? _read() => _withStruct((ptr, size) {
-    final ok = _spi!(_spiGetStickyKeys, size, ptr.cast(), 0) != 0;
+  int? _read() => _withStruct((spi, ptr, size) {
+    final ok = spi(_spiGetStickyKeys, size, ptr.cast(), 0) != 0;
     return ok ? ptr.ref.dwFlags : null;
   });
 
   bool _write(int flags) =>
-      _withStruct((ptr, size) {
+      _withStruct((spi, ptr, size) {
         ptr.ref.dwFlags = flags;
         // fWinIni 0: change the running session only, do not persist to the profile.
-        return _spi!(_spiSetStickyKeys, size, ptr.cast(), 0) != 0;
+        return spi(_spiSetStickyKeys, size, ptr.cast(), 0) != 0;
       }) ??
       false;
 
-  T? _withStruct<T>(T? Function(Pointer<_StickyKeys>, int) body) {
-    if (_spi == null) return null;
+  T? _withStruct<T>(T? Function(_Spi, Pointer<_StickyKeys>, int) body) {
+    final spi = _spi;
+    if (spi == null) return null;
     final ptr = calloc<_StickyKeys>();
     try {
       ptr.ref.cbSize = sizeOf<_StickyKeys>();
-      return body(ptr, ptr.ref.cbSize);
+      return body(spi, ptr, ptr.ref.cbSize);
     } finally {
       calloc.free(ptr);
     }

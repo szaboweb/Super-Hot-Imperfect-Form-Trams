@@ -60,11 +60,9 @@ class EditorSwitchPlanner {
   EditorSwitchPlanner(this.grid, this.rings) {
     for (var r = 0; r < rings.length; r++) {
       final ring = rings[r];
-      if (!ring.isClosed) {
-        final start = _require(ring.startStub, 'startStub on ring $r');
-        final end = _require(ring.endStub, 'endStub on ring $r');
-        _stubRings[(start.cell, start.side)] = r;
-        _stubRings[(end.cell, end.side)] = r;
+      if (ring is OpenEditorRing) {
+        _stubRings[(ring.startStub.cell, ring.startStub.side)] = r;
+        _stubRings[(ring.endStub.cell, ring.endStub.side)] = r;
       }
       for (final p in ring.passes) {
         if (p.isStraight) _lanes[(p.cell, p.isHorizontal)] = (ring: r, pass: p);
@@ -124,9 +122,11 @@ class EditorSwitchPlanner {
   }
 
   EditorCrossoverPlan _tSwitch(String id, EditorCell cell, EditorPiece piece) {
-    final stem = _require(piece.tStemSide, 'tStemSide at $cell');
+    final stem = piece.tStemSide;
+    if (stem == null) throw StateError('Expected T-switch at $cell');
     final throughRing = _requireLane(cell, !stem.isHorizontal).ring;
-    final stemRing = _require(_stubRings[(cell, stem)], 'stem ring at $cell');
+    final stemRing = _stubRings[(cell, stem)];
+    if (stemRing == null) throw StateError('Missing stem ring at $cell');
     final rings = throughRing == stemRing
         ? [throughRing]
         : [throughRing, stemRing];
@@ -134,8 +134,11 @@ class EditorSwitchPlanner {
   }
 
   EditorCrossoverPlan? _ySwitch(String id, EditorCell cell, EditorPiece piece) {
-    final fwd = _require(piece.yForwardSide, 'yForwardSide at $cell');
-    final branch = _require(piece.yBranchSide, 'yBranchSide at $cell');
+    final fwd = piece.yForwardSide;
+    final branch = piece.yBranchSide;
+    if (fwd == null || branch == null) {
+      throw StateError('Expected Y-switch at $cell');
+    }
     final own = _requireLane(cell, fwd.isHorizontal);
     final other = (col: cell.col + branch.dCol, row: cell.row + branch.dRow);
     final otherPiece = grid.railAt(other);
@@ -234,11 +237,6 @@ class EditorSwitchPlanner {
     return lane;
   }
 
-  static T _require<T>(T? value, String detail) {
-    if (value == null) throw StateError('Missing $detail');
-    return value;
-  }
-
   void _checkConnectivity(List<EditorCrossoverPlan> plans) {
     final adj = List.generate(rings.length, (_) => <int>[]);
     for (final p in plans) {
@@ -266,9 +264,11 @@ class EditorSwitchPlanner {
     for (var r = 0; r < rings.length; r++) {
       if (!visited.contains(r)) {
         final ring = rings[r];
-        final cell = ring.passes.isNotEmpty
-            ? ring.passes.first.cell
-            : _require(ring.startStub, 'startStub on ring $r').cell;
+        final cell = switch (ring) {
+          _ when ring.passes.isNotEmpty => ring.passes.first.cell,
+          OpenEditorRing(:final startStub) => startStub.cell,
+          ClosedEditorRing() => throw StateError('Empty closed ring $r'),
+        };
         _issues.add(
           EditorIssue(EditorMessages.disconnectedTrack(cell), cell: cell),
         );

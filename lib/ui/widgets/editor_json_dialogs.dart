@@ -266,10 +266,10 @@ class _EditorImportDialogState extends State<_EditorImportDialog> {
           icon: const Icon(Icons.folder_open, size: 18),
           label: const Text('Fájl kiválasztása (.json)...'),
         ),
-        if (_errorText != null) ...[
+        if (_errorText case final errorText?) ...[
           const SizedBox(height: 10),
           Text(
-            _errorText!,
+            errorText,
             style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
           ),
         ],

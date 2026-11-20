@@ -75,8 +75,8 @@ class _GridCellWidgetState extends State<_GridCellWidget> {
       onWillAcceptWithDetails: (_) => true,
       onAcceptWithDetails: (details) {
         final payload = details.data;
-        if (payload.fromCell != null) {
-          widget.controller.movePiece(payload.fromCell!, widget.cell);
+        if (payload.fromCell case final fromCell?) {
+          widget.controller.movePiece(fromCell, widget.cell);
         } else {
           widget.controller.placePiece(payload.piece, widget.cell);
         }
@@ -209,17 +209,17 @@ class _CellVisual extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (rail != null)
+          if (rail case final railPiece?)
             CustomPaint(
               painter: EditorPiecePainter(
-                piece: rail!,
+                piece: railPiece,
                 verticalInline: verticalInline,
                 bufferSide: bufferSide,
                 wyeStemSide: wyeStemSide,
               ),
             ),
-          if (tram != null)
-            CustomPaint(painter: EditorPiecePainter(piece: tram!)),
+          if (tram case final tramPiece?)
+            CustomPaint(painter: EditorPiecePainter(piece: tramPiece)),
           if (cell.row == 0 || cell.col == 0)
             Positioned(
               left: 2,
