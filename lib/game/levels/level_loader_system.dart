@@ -90,6 +90,8 @@ class LevelLoaderSystem {
               center: data.center,
               radius: data.radius,
               movement: data.movement,
+              stemPoint: data.stemPoint,
+              forward: data.forward,
             ),
         ],
       ),

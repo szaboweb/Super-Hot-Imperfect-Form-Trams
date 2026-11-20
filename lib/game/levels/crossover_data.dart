@@ -23,7 +23,10 @@ enum PlatformShape {
   triangle,
 
   /// Tight-radius Y-switch: curves left or right with SHIFT + directional key.
-  wye;
+  wye,
+
+  /// S-curve parallel-lane Y-switch: branches on SHIFT and auto-merges back.
+  turnout;
 
   /// Parses the JSON name; unknown or missing names fall back to [circle].
   static PlatformShape parse(Object? name) => PlatformShape.values.firstWhere(
@@ -44,10 +47,16 @@ class CrossoverData {
     this.shape = PlatformShape.circle,
     this.signalDx = -56,
     this.signalDy = -50,
+    this.stemX,
+    this.stemY,
+    this.forwardDx,
+    this.forwardDy,
   });
 
   factory CrossoverData.fromJson(Map<String, dynamic> json) {
     final offset = json['signalOffset'] as List?;
+    final stem = json['stemPoint'] as List?;
+    final fwd = json['forward'] as List?;
     return CrossoverData(
       id: json['id'] as String,
       x: (json['x'] as num).toDouble(),
@@ -56,6 +65,18 @@ class CrossoverData {
       shape: PlatformShape.parse(json['platformShape']),
       signalDx: (offset?[0] as num?)?.toDouble() ?? -56,
       signalDy: (offset?[1] as num?)?.toDouble() ?? -50,
+      stemX: stem != null && stem.isNotEmpty
+          ? (stem[0] as num?)?.toDouble()
+          : null,
+      stemY: stem != null && stem.length > 1
+          ? (stem[1] as num?)?.toDouble()
+          : null,
+      forwardDx: fwd != null && fwd.isNotEmpty
+          ? (fwd[0] as num?)?.toDouble()
+          : null,
+      forwardDy: fwd != null && fwd.length > 1
+          ? (fwd[1] as num?)?.toDouble()
+          : null,
       links: [
         for (final l in (json['links'] as List? ?? const []))
           (from: (l as Map)['from'] as String, to: l['to'] as String),
@@ -78,15 +99,32 @@ class CrossoverData {
   /// Offset of the signal light from the crossing point (outside the disc).
   final double signalDx;
   final double signalDy;
+
+  /// Optional stem-lane anchor point in world px for [PlatformShape.turnout].
+  final double? stemX;
+  final double? stemY;
+
+  /// Optional world forward direction unit vector for [PlatformShape.turnout].
+  final double? forwardDx;
+  final double? forwardDy;
+
   final List<CrossoverLinkData> links;
 
   math.Point<double> get center => math.Point(x, y);
+
+  math.Point<double>? get stemPoint =>
+      (stemX != null && stemY != null) ? math.Point(stemX!, stemY!) : null;
+
+  math.Point<double>? get forward => (forwardDx != null && forwardDy != null)
+      ? math.Point(forwardDx!, forwardDy!)
+      : null;
 
   /// How the platform moves a tram, from its shape.
   TurntableMovement get movement => switch (shape) {
     PlatformShape.rectangle => TurntableMovement.slide,
     PlatformShape.triangle => TurntableMovement.reverse,
     PlatformShape.wye => TurntableMovement.curve,
+    PlatformShape.turnout => TurntableMovement.turnout,
     PlatformShape.circle || PlatformShape.square => TurntableMovement.rotate,
   };
 
@@ -118,7 +156,11 @@ class CrossoverData {
         'a(z) "$id" háromszög váltónál from == to szükséges (fordítás)',
       );
     }
-    final maxGap = movement == TurntableMovement.slide ? radius : 2.0;
+    final maxGap =
+        (movement == TurntableMovement.slide ||
+            movement == TurntableMovement.turnout)
+        ? radius
+        : 2.0;
     final resolved = <String, TrackPath>{};
     for (final name in {link.from, link.to}) {
       final path = _validatedPath(name, segments, maxGap, errors);
@@ -167,6 +209,17 @@ class CrossoverData {
         errors.add(
           'a(z) "$id" csúsztatós váltóhoz két párhuzamos sáv szükséges',
         );
+      }
+    } else if (movement == TurntableMovement.turnout) {
+      if (!TurntableTurnBuilder.hasValidTurnout(
+        fromPath,
+        toPath,
+        center,
+        radius,
+        stemPoint: stemPoint,
+        forward: forward,
+      )) {
+        errors.add('a(z) "$id" Y váltóhoz két párhuzamos sáv szükséges');
       }
     } else if (same &&
         (movement == TurntableMovement.rotate ||

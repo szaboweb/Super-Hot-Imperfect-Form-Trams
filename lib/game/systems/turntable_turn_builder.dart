@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'track_path.dart';
+import 'turnout_turn_builder.dart';
 import 'turntable_movement.dart';
 import 'turntable_turn.dart';
 
@@ -15,6 +16,8 @@ abstract final class TurntableTurnBuilder {
     required math.Point<double> center,
     double radius = 48,
     TurntableMovement movement = TurntableMovement.rotate,
+    math.Point<double>? stemPoint,
+    math.Point<double>? forward,
   }) {
     if (movement == TurntableMovement.reverse) {
       return [
@@ -41,6 +44,17 @@ abstract final class TurntableTurnBuilder {
         to: to,
         center: center,
         radius: radius,
+      );
+    }
+    if (movement == TurntableMovement.turnout) {
+      return TurnoutTurnBuilder.buildAll(
+        from: from,
+        to: to,
+        center: center,
+        radius: radius,
+        pairs: _slidePairs(from, to, center, radius),
+        stemPoint: stemPoint,
+        forward: forward,
       );
     }
     final fromHits = _hitsOrNearest(from, center);
@@ -73,6 +87,24 @@ abstract final class TurntableTurnBuilder {
     math.Point<double> center,
     double radius,
   ) => hasValidSlide(path, path, center, radius);
+
+  /// Returns `true` iff [from] and [to] form a valid S-curve parallel-lane Y-switch.
+  static bool hasValidTurnout(
+    TrackPath from,
+    TrackPath to,
+    math.Point<double> center,
+    double radius, {
+    math.Point<double>? stemPoint,
+    math.Point<double>? forward,
+  }) => TurnoutTurnBuilder.hasValidTurnout(
+    from: from,
+    to: to,
+    center: center,
+    radius: radius,
+    pairs: _slidePairs(from, to, center, radius),
+    stemPoint: stemPoint,
+    forward: forward,
+  );
 
   /// Wraps angle [a] in radians into `[-pi, pi)`.
   static double wrapPi(double a) {

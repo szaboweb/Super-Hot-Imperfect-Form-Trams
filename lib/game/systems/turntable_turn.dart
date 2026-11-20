@@ -22,6 +22,8 @@ class TurntableTurn {
     this.movement = TurntableMovement.rotate,
     this.fromPoint = const math.Point(0, 0),
     this.slide = const math.Point(0, 0),
+    this.autoBoard = false,
+    this.requiredTravelDir,
   });
 
   /// [movement] decides the geometry: `rotate` turns from [from]'s heading to [to]'s,
@@ -56,9 +58,14 @@ class TurntableTurn {
     required double fromAlong,
     required double toAlong,
     required TurntableMovement movement,
+    bool autoBoard = false,
+    math.Point<double>? requiredTravelDir,
   }) {
     final fromHeading = from.headingAt(fromAlong);
     final fromPoint = from.positionAt(fromAlong);
+    final hasLateralOffset =
+        movement == TurntableMovement.slide ||
+        movement == TurntableMovement.turnout;
     return TurntableTurn(
       from: from,
       to: to,
@@ -70,14 +77,16 @@ class TurntableTurn {
       sweep: switch (movement) {
         TurntableMovement.rotate || TurntableMovement.curve =>
           TurntableTurnBuilder.wrapPi(to.headingAt(toAlong) - fromHeading),
-        TurntableMovement.slide => 0,
+        TurntableMovement.slide || TurntableMovement.turnout => 0,
         TurntableMovement.reverse => math.pi,
       },
       movement: movement,
       fromPoint: fromPoint,
-      slide: movement == TurntableMovement.slide
+      slide: hasLateralOffset
           ? to.positionAt(toAlong) - fromPoint
           : const math.Point(0, 0),
+      autoBoard: autoBoard,
+      requiredTravelDir: requiredTravelDir,
     );
   }
 
@@ -88,12 +97,16 @@ class TurntableTurn {
     required math.Point<double> center,
     double radius = 48,
     TurntableMovement movement = TurntableMovement.rotate,
+    math.Point<double>? stemPoint,
+    math.Point<double>? forward,
   }) => TurntableTurnBuilder.buildAll(
     from: from,
     to: to,
     center: center,
     radius: radius,
     movement: movement,
+    stemPoint: stemPoint,
+    forward: forward,
   );
 
   /// The platform never moves faster than this, even if the tram is about to leave it
@@ -124,6 +137,12 @@ class TurntableTurn {
 
   /// Sideways move of a sliding platform from [from]'s lane to [to]'s lane (px).
   final math.Point<double> slide;
+
+  /// True when a converging tram boards this turn automatically without SHIFT.
+  final bool autoBoard;
+
+  /// Optional world-space unit vector `(dx, dy)` restricting boarding direction.
+  final math.Point<double>? requiredTravelDir;
 
   /// Lane distance of a slide, px.
   double get slideDistance => slide.distanceTo(const math.Point(0, 0));
@@ -163,9 +182,19 @@ class TurntableTurn {
     final offset = offsetOf(path, distance);
     if (offset == null || speed == 0) return null;
     final travelSign = speed < 0 ? -1.0 : 1.0;
+    final requiredDir = requiredTravelDir;
+    if (requiredDir != null) {
+      final vx = math.sin(fromHeading) * travelSign;
+      final vy = -math.cos(fromHeading) * travelSign;
+      if (vx * requiredDir.x + vy * requiredDir.y < 0.7) return null;
+    }
     final signedOffset = offset * travelSign;
     final reach = radius + halfLength;
-    final maxOffset = movement == TurntableMovement.curve ? 12.0 : reach;
+    final maxOffset =
+        (movement == TurntableMovement.curve ||
+            movement == TurntableMovement.turnout)
+        ? 12.0
+        : reach;
     if (signedOffset < -reach || signedOffset > maxOffset) return null;
     final seconds = (reach - signedOffset) / speed.abs();
     return TurntableRide(

@@ -49,9 +49,13 @@ abstract final class EditorMessages {
   static String bufferConnections(EditorCell c) =>
       'Ütközőbak ${_at(c)}: pontosan egy sínvéghez csatlakozhat.';
 
-  /// Error message when a Y-switch has fewer than three connected rail arms.
+  /// Error message when a T-switch is missing any of its three connected rail arms.
   static String wyeConnections(EditorCell c) =>
-      'Y váltó ${_at(c)}: legalább három csatlakozó sínág szükséges.';
+      'T váltó ${_at(c)}: mindhárom csatlakozó sínág szükséges.';
+
+  /// Error message when a Y-switch lacks a parallel straight rail on its branch side.
+  static String ySwitchNoLane(EditorCell c) =>
+      'Y váltó ${_at(c)}: a leágazás oldalán nincs párhuzamos egyenes sín.';
 
   static String levelInvalid(String detail) => 'Érvénytelen pálya: $detail';
 }

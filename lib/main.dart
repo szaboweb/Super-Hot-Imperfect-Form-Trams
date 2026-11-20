@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'audio/audio_service.dart';
+import 'core/game_log.dart';
 import 'core/sticky_keys_guard.dart';
 import 'game/editor/editor_controller.dart';
 import 'game/levels/level_data.dart';
@@ -77,8 +78,8 @@ class _TramsAppState extends State<TramsApp> {
       final loaded = await LevelRepository().loadAll();
       if (!mounted) return;
       setState(() => _levels = loaded);
-    } on Object catch (_) {
-      // Asset loading errors are surfaced when starting a race if any.
+    } on Object catch (error) {
+      GameLog.event('level', 'Failed to preload campaign levels: $error');
     }
   }
 

@@ -46,8 +46,21 @@ enum EditorPiece {
   /// Y-turn on a crossing cell: reverses the tram 180 degrees on its own loop.
   switchTriangle(),
 
-  /// Tight-radius Y-switch: curves left or right with SHIFT + directional key.
-  switchY(),
+  /// Tight-radius 3-way T-switches (perpendicular stem faces north/south/east/west).
+  switchTNorth(),
+  switchTSouth(),
+  switchTEast(),
+  switchTWest(),
+
+  /// S-curve parallel-lane Y-switches (straight default, SHIFT shifts 1 lane left/right).
+  switchYNorthLeft(sides: [EditorSide.north, EditorSide.south]),
+  switchYNorthRight(sides: [EditorSide.north, EditorSide.south]),
+  switchYSouthLeft(sides: [EditorSide.north, EditorSide.south]),
+  switchYSouthRight(sides: [EditorSide.north, EditorSide.south]),
+  switchYEastLeft(sides: [EditorSide.west, EditorSide.east]),
+  switchYEastRight(sides: [EditorSide.west, EditorSide.east]),
+  switchYWestLeft(sides: [EditorSide.west, EditorSide.east]),
+  switchYWestRight(sides: [EditorSide.west, EditorSide.east]),
 
   /// Track barrier that closes behind passing trams and opens on SHIFT.
   gate(),
@@ -69,6 +82,49 @@ enum EditorPiece {
   /// Fixed edges the rail connects (empty for switches, zones, crossings and trams).
   final List<EditorSide> sides;
 
+  /// Stem edge of a directional 3-way T-switch, or null for other pieces.
+  EditorSide? get tStemSide => switch (this) {
+    switchTNorth => EditorSide.north,
+    switchTSouth => EditorSide.south,
+    switchTEast => EditorSide.east,
+    switchTWest => EditorSide.west,
+    _ => null,
+  };
+
+  /// True for the 4 directional T-switches.
+  bool get isTSwitch => tStemSide != null;
+
+  /// Diverging (SHIFT) travel direction of an S-curve Y-switch, or null.
+  EditorSide? get yForwardSide => switch (this) {
+    switchYNorthLeft || switchYNorthRight => EditorSide.north,
+    switchYSouthLeft || switchYSouthRight => EditorSide.south,
+    switchYEastLeft || switchYEastRight => EditorSide.east,
+    switchYWestLeft || switchYWestRight => EditorSide.west,
+    _ => null,
+  };
+
+  /// Parallel lane edge toward which an S-curve Y-switch branches on SHIFT.
+  EditorSide? get yBranchSide => switch (this) {
+    switchYNorthLeft || switchYSouthRight => EditorSide.west,
+    switchYNorthRight || switchYSouthLeft => EditorSide.east,
+    switchYEastLeft || switchYWestRight => EditorSide.north,
+    switchYEastRight || switchYWestLeft => EditorSide.south,
+    _ => null,
+  };
+
+  /// True for the 8 directional S-curve parallel-lane Y-switches.
+  bool get isYSwitch => yForwardSide != null;
+
+  /// Whether this piece accepts a rail connection on [side] (with [verticalInline] for auto-straight pieces).
+  bool connectsToSide(EditorSide side, {bool verticalInline = false}) {
+    if (isCrossing) return true;
+    if (isTSwitch) return side != tStemSide!.opposite;
+    if (isAutoStraight) {
+      return verticalInline ? !side.isHorizontal : side.isHorizontal;
+    }
+    return sides.contains(side);
+  }
+
   /// True for player tram spawn markers.
   bool get isTram => this == tramGreen || this == tramRed;
 
@@ -77,7 +133,8 @@ enum EditorPiece {
       this == switchCircle ||
       this == switchRectangle ||
       this == switchTriangle ||
-      this == switchY;
+      isTSwitch ||
+      isYSwitch;
 
   /// Pieces that occupy the rail layer of a cell (everything except trams).
   bool get isRail => !isTram;
@@ -91,7 +148,7 @@ enum EditorPiece {
 
   /// Rails a tram spawn marker may sit on.
   bool get isPlainRail =>
-      sides.isNotEmpty ||
+      (sides.isNotEmpty && !isYSwitch) ||
       this == switchRectangle ||
       this == railIce ||
       this == railMelted;
@@ -102,5 +159,9 @@ enum EditorPiece {
 
   /// Rail pieces that cannot share a cell with a spawned tram marker.
   bool get blocksTram =>
-      isCrossing || this == switchY || this == bufferStop || this == gate;
+      isCrossing ||
+      isTSwitch ||
+      isYSwitch ||
+      this == bufferStop ||
+      this == gate;
 }

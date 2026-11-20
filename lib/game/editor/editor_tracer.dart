@@ -65,7 +65,7 @@ class EditorTracer {
   EditorTracer(this.grid) {
     final cells = grid.rails.keys.toList()..sort(_compareCells);
     for (final cell in cells) {
-      _initRail(cell, grid.railAt(cell)!);
+      _initRail(cell, _require(grid.railAt(cell), 'rail at $cell'));
     }
     for (final cell in cells) {
       if (grid.railAt(cell) != EditorPiece.bufferStop) continue;
@@ -100,7 +100,7 @@ class EditorTracer {
       for (final cell in cells)
         if (_wyeErrors.contains(cell))
           EditorIssue(EditorMessages.wyeConnections(cell), cell: cell)
-        else if (_bufferSides[cell]!.length != 1)
+        else if (_require(_bufferSides[cell], 'buffer at $cell').length != 1)
           EditorIssue(EditorMessages.bufferConnections(cell), cell: cell),
     ];
   }
@@ -109,11 +109,12 @@ class EditorTracer {
   /// rail pair, single-connection buffer stop, or Y-switch stub.
   List<EditorStub> openEnds() => [
     for (final cell in _sortedCells()) ...[
-      for (final pair in _pairs[cell]!)
-        for (final side in [pair.a, pair.b])
-          if (!_isSideConnected(cell, side)) (cell: cell, side: side),
-      if (_wyeStubs[cell] != null && !_isSideConnected(cell, _wyeStubs[cell]!))
-        (cell: cell, side: _wyeStubs[cell]!),
+      for (final pair in _pairsAt(cell)) ...[
+        if (!_isSideConnected(cell, pair.a)) (cell: cell, side: pair.a),
+        if (!_isSideConnected(cell, pair.b)) (cell: cell, side: pair.b),
+      ],
+      if (_wyeStubs[cell] case final stub? when !_isSideConnected(cell, stub))
+        (cell: cell, side: stub),
     ],
   ];
 
@@ -139,11 +140,12 @@ class EditorTracer {
     for (final stub in sortedStubs) {
       if (seenStubs.contains((stub.cell, stub.side))) continue;
       final ring = _walkStub(stub, seenStubs, seenPairs);
-      assert(allStubs.contains((ring.endStub!.cell, ring.endStub!.side)));
+      final endStub = _require(ring.endStub, 'endStub from $stub');
+      assert(allStubs.contains((endStub.cell, endStub.side)));
       result.add(ring);
     }
     for (final cell in _sortedCells()) {
-      final pairs = _pairs[cell]!;
+      final pairs = _pairsAt(cell);
       for (var i = 0; i < pairs.length; i++) {
         if (!seenPairs.contains((cell, i))) {
           result.add(_walk(cell, i, seenPairs));
@@ -180,7 +182,7 @@ class EditorTracer {
   }
 
   EditorRing _walk(EditorCell start, int index, Set<(EditorCell, int)> seen) {
-    final pair = _pairs[start]![index];
+    final pair = _pairsAt(start)[index];
     var exit = _startPriority.firstWhere((s) => s == pair.a || s == pair.b);
     var pass = EditorPass(start, exit == pair.a ? pair.b : pair.a, exit);
     final passes = <EditorPass>[];
@@ -189,7 +191,7 @@ class EditorTracer {
       passes.add(pass);
       final next = _neighbour(pass.cell, pass.to);
       final entry = pass.to.opposite;
-      final nextPair = _pairAt(next, entry)!;
+      final nextPair = _require(_pairAt(next, entry), 'pair at $next');
       exit = nextPair.a == entry ? nextPair.b : nextPair.a;
       pass = EditorPass(next, entry, exit);
       if (pass.cell == start && _indexOf(next, entry) == index) break;
@@ -199,30 +201,28 @@ class EditorTracer {
 
   void _initRail(EditorCell cell, EditorPiece piece) {
     if (piece == EditorPiece.bufferStop) return;
-    if (piece == EditorPiece.switchY) return _initWye(cell);
-    _pairs[cell] = piece.isCrossing
-        ? [_hPair, _vPair]
-        : piece.isAutoStraight
-        ? [grid.isVerticalInline(cell) ? _vPair : _hPair]
-        : [(a: piece.sides[0], b: piece.sides[1])];
+    final stem = piece.tStemSide;
+    if (stem != null) {
+      _initTSwitch(cell, stem);
+    } else if (piece.isCrossing) {
+      _pairs[cell] = [_hPair, _vPair];
+    } else if (piece.isAutoStraight) {
+      _pairs[cell] = [grid.isVerticalInline(cell) ? _vPair : _hPair];
+    } else {
+      _pairs[cell] = [(a: piece.sides[0], b: piece.sides[1])];
+    }
   }
 
-  void _initWye(EditorCell cell) {
-    final connected = [
-      for (final s in EditorSide.values)
-        if (_candidateConnectsFrom(cell, s)) s,
-    ];
-    if (connected.length < 3) {
-      _wyeErrors.add(cell);
-      return;
+  void _initTSwitch(EditorCell cell, EditorSide stem) {
+    final missing = stem.opposite;
+    for (final s in EditorSide.values) {
+      if (s != missing && !_candidateConnectsFrom(cell, s)) {
+        _wyeErrors.add(cell);
+        return;
+      }
     }
-    if (connected.length == 4) {
-      _pairs[cell] = [_hPair, _vPair];
-      return;
-    }
-    final m = EditorSide.values.firstWhere((s) => !connected.contains(s));
-    _pairs[cell] = [m.isHorizontal ? _vPair : _hPair];
-    _wyeStubs[cell] = m.opposite;
+    _pairs[cell] = [stem.isHorizontal ? _vPair : _hPair];
+    _wyeStubs[cell] = stem;
   }
 
   bool _candidateConnectsFrom(EditorCell cell, EditorSide s) {
@@ -232,11 +232,10 @@ class EditorTracer {
     if (piece == EditorPiece.bufferStop) {
       return grid.bufferEntrySide(n) == s.opposite;
     }
-    if (piece.isCrossing || piece == EditorPiece.switchY) return true;
-    if (piece.isAutoStraight) {
-      return grid.isVerticalInline(n) ? !s.isHorizontal : s.isHorizontal;
-    }
-    return piece.sides.contains(s.opposite);
+    return piece.connectsToSide(
+      s.opposite,
+      verticalInline: grid.isVerticalInline(n),
+    );
   }
 
   bool _connectsBuffer(EditorCell n, EditorSide opposite) =>
@@ -256,7 +255,15 @@ class EditorTracer {
       (col: c.col + s.dCol, row: c.row + s.dRow);
 
   int _indexOf(EditorCell cell, EditorSide side) =>
-      _pairs[cell]!.indexWhere((p) => p.a == side || p.b == side);
+      _pairsAt(cell).indexWhere((p) => p.a == side || p.b == side);
+
+  List<EditorSidePair> _pairsAt(EditorCell cell) =>
+      _require(_pairs[cell], 'pairs at $cell');
+
+  static T _require<T>(T? value, String detail) {
+    if (value == null) throw StateError('Missing $detail');
+    return value;
+  }
 
   EditorSidePair? _pairAt(EditorCell cell, EditorSide side) {
     for (final p in _pairs[cell] ?? const <EditorSidePair>[]) {

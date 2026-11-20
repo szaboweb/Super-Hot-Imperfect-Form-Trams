@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'editor_direction_solver.dart';
 import 'editor_grid.dart';
 import 'editor_messages.dart';
 import 'editor_piece.dart';
@@ -13,6 +14,8 @@ class EditorCrossoverPlan {
     required this.center,
     required this.rings,
     this.radius = 48,
+    this.stemCenter,
+    this.forwardSide,
   });
 
   final String id;
@@ -24,6 +27,12 @@ class EditorCrossoverPlan {
 
   /// Crossover platform radius in world px.
   final double radius;
+
+  /// Stem cell centre for [EditorPiece.isYSwitch] (`turnout`).
+  final math.Point<double>? stemCenter;
+
+  /// Diverging travel direction for [EditorPiece.isYSwitch] (`turnout`).
+  final EditorSide? forwardSide;
 }
 
 /// Outcome of planning the switches of a layout.
@@ -52,8 +61,10 @@ class EditorSwitchPlanner {
     for (var r = 0; r < rings.length; r++) {
       final ring = rings[r];
       if (!ring.isClosed) {
-        _stubRings[(ring.startStub!.cell, ring.startStub!.side)] = r;
-        _stubRings[(ring.endStub!.cell, ring.endStub!.side)] = r;
+        final start = _require(ring.startStub, 'startStub on ring $r');
+        final end = _require(ring.endStub, 'endStub on ring $r');
+        _stubRings[(start.cell, start.side)] = r;
+        _stubRings[(end.cell, end.side)] = r;
       }
       for (final p in ring.passes) {
         if (p.isStraight) _lanes[(p.cell, p.isHorizontal)] = (ring: r, pass: p);
@@ -75,10 +86,11 @@ class EditorSwitchPlanner {
     for (final e in grid.rails.entries) {
       final id = 'sw_${e.key.col}_${e.key.row}';
       final plan = switch (e.value) {
-        EditorPiece.switchCircle => _circle(id, e.key),
-        EditorPiece.switchTriangle => _triangle(id, e.key),
+        EditorPiece.switchCircle ||
+        EditorPiece.switchTriangle => _crossing(id, e.key, e.value),
         EditorPiece.switchRectangle => _rectangle(id, e.key),
-        EditorPiece.switchY => _wye(id, e.key),
+        _ when e.value.isTSwitch => _tSwitch(id, e.key, e.value),
+        _ when e.value.isYSwitch => _ySwitch(id, e.key, e.value),
         _ => null,
       };
       if (plan == null) continue;
@@ -86,7 +98,9 @@ class EditorSwitchPlanner {
         _issues.add(
           EditorIssue(EditorMessages.rectDuplicate(e.key), cell: e.key),
         );
-      } else if (_hasOverlap(plans, plan.center, plan.radius)) {
+      } else if (plans.any(
+        (p) => p.center.distanceTo(plan.center) < p.radius + plan.radius - 0.5,
+      )) {
         _issues.add(
           EditorIssue(EditorMessages.switchOverlap(e.key), cell: e.key),
         );
@@ -94,52 +108,59 @@ class EditorSwitchPlanner {
         plans.add(plan);
       }
     }
-    final reversed = _solveDirections();
+    final solution = EditorDirectionSolver(grid, _lanes).solve([
+      for (final e in _opposite) (a: e.a, b: e.b, differ: true),
+      for (final e in _same) (a: e.a, b: e.b, differ: false),
+    ]);
+    _issues.addAll(solution.issues);
     if (rings.length > 1 && _issues.isEmpty) _checkConnectivity(plans);
-    return EditorSwitchPlan(plans, reversed, _issues);
+    return EditorSwitchPlan(plans, solution.reversedRings, _issues);
   }
 
-  static bool _hasOverlap(
-    List<EditorCrossoverPlan> plans,
-    math.Point<double> center,
-    double radius,
-  ) => plans.any((p) => p.center.distanceTo(center) < p.radius + radius - 0.5);
-
-  EditorCrossoverPlan _circle(String id, EditorCell cell) {
-    final h = _lanes[(cell, true)]!.ring;
-    final v = _lanes[(cell, false)]!.ring;
-    return _plan(id, EditorPiece.switchCircle, cell, h == v ? [h] : [h, v]);
+  EditorCrossoverPlan _crossing(String id, EditorCell cell, EditorPiece piece) {
+    final h = _requireLane(cell, true).ring;
+    final v = _requireLane(cell, false).ring;
+    return _plan(id, piece, cell, h == v ? [h] : [h, v]);
   }
 
-  EditorCrossoverPlan _triangle(String id, EditorCell cell) => _plan(
-    id,
-    EditorPiece.switchTriangle,
-    cell,
-    {_lanes[(cell, true)]!.ring, _lanes[(cell, false)]!.ring}.toList(),
-  );
+  EditorCrossoverPlan _tSwitch(String id, EditorCell cell, EditorPiece piece) {
+    final stem = _require(piece.tStemSide, 'tStemSide at $cell');
+    final throughRing = _requireLane(cell, !stem.isHorizontal).ring;
+    final stemRing = _require(_stubRings[(cell, stem)], 'stem ring at $cell');
+    final rings = throughRing == stemRing
+        ? [throughRing]
+        : [throughRing, stemRing];
+    return _plan(id, piece, cell, rings, radius: 32);
+  }
 
-  EditorCrossoverPlan _wye(String id, EditorCell cell) {
-    if (_lanes.containsKey((cell, true)) && _lanes.containsKey((cell, false))) {
-      final h = _lanes[(cell, true)]!.ring;
-      final v = _lanes[(cell, false)]!.ring;
-      return _plan(id, EditorPiece.switchY, cell, {h, v}.toList(), radius: 32);
+  EditorCrossoverPlan? _ySwitch(String id, EditorCell cell, EditorPiece piece) {
+    final fwd = _require(piece.yForwardSide, 'yForwardSide at $cell');
+    final branch = _require(piece.yBranchSide, 'yBranchSide at $cell');
+    final own = _requireLane(cell, fwd.isHorizontal);
+    final other = (col: cell.col + branch.dCol, row: cell.row + branch.dRow);
+    final otherPiece = grid.railAt(other);
+    final lane = (otherPiece != null && !otherPiece.isCrossing)
+        ? _lanes[(other, fwd.isHorizontal)]
+        : null;
+    if (lane == null) {
+      _issues.add(EditorIssue(EditorMessages.ySwitchNoLane(cell), cell: cell));
+      return null;
     }
-    final throughRing = (_lanes[(cell, true)] ?? _lanes[(cell, false)])!.ring;
-    final stemRing = _stubRings.entries
-        .firstWhere((e) => e.key.$1 == cell)
-        .value;
-    return _plan(
+    return _linkLanes(
       id,
-      EditorPiece.switchY,
+      piece,
       cell,
-      throughRing == stemRing ? [throughRing] : [throughRing, stemRing],
-      radius: 32,
+      other,
+      own,
+      lane,
+      stemCenter: grid.cellCenter(cell),
+      forwardSide: fwd,
     );
   }
 
   EditorCrossoverPlan? _rectangle(String id, EditorCell cell) {
     final horizontal = _lanes.containsKey((cell, true));
-    final own = _lanes[(cell, horizontal)]!;
+    final own = _requireLane(cell, horizontal);
     final steps = horizontal
         ? [(dCol: 0, dRow: 1), (dCol: 0, dRow: -1)]
         : [(dCol: 1, dRow: 0), (dCol: -1, dRow: 0)];
@@ -149,7 +170,14 @@ class EditorSwitchPlanner {
       if (otherPiece == null || otherPiece.isCrossing) continue;
       final lane = _lanes[(other, horizontal)];
       if (lane == null) continue;
-      return _linkLanes(id, cell, other, own, lane);
+      return _linkLanes(
+        id,
+        EditorPiece.switchRectangle,
+        cell,
+        other,
+        own,
+        lane,
+      );
     }
     _issues.add(EditorIssue(EditorMessages.rectNoLane(cell), cell: cell));
     return null;
@@ -157,11 +185,14 @@ class EditorSwitchPlanner {
 
   EditorCrossoverPlan _linkLanes(
     String id,
+    EditorPiece piece,
     EditorCell cell,
     EditorCell other,
     ({int ring, EditorPass pass}) own,
-    ({int ring, EditorPass pass}) lane,
-  ) {
+    ({int ring, EditorPass pass}) lane, {
+    math.Point<double>? stemCenter,
+    EditorSide? forwardSide,
+  }) {
     if (own.ring != lane.ring) {
       final dot =
           own.pass.to.dCol * lane.pass.to.dCol +
@@ -172,9 +203,11 @@ class EditorSwitchPlanner {
     final b = grid.cellCenter(other);
     return EditorCrossoverPlan(
       id: id,
-      piece: EditorPiece.switchRectangle,
+      piece: piece,
       center: math.Point((a.x + b.x) / 2, (a.y + b.y) / 2),
       rings: own.ring == lane.ring ? [own.ring] : [own.ring, lane.ring],
+      stemCenter: stemCenter,
+      forwardSide: forwardSide,
     );
   }
 
@@ -192,77 +225,18 @@ class EditorSwitchPlanner {
     radius: radius,
   );
 
-  /// 2-colours the rings: rings joined by a rectangle must run the same way.
-  Set<int> _solveDirections() {
-    final edges = [
-      for (final e in _opposite) (a: e.a, b: e.b, differ: true),
-      for (final e in _same) (a: e.a, b: e.b, differ: false),
-    ];
-    final adj = _buildAdjacency(edges);
-    final flip = <int, bool>{};
-    for (final start in adj.keys) {
-      if (!flip.containsKey(start)) _bfsComponent(start, adj, flip);
+  ({int ring, EditorPass pass}) _requireLane(EditorCell cell, bool horizontal) {
+    final lane = _lanes[(cell, horizontal)];
+    if (lane == null) {
+      final axis = horizontal ? 'horizontal' : 'vertical';
+      throw StateError('Missing $axis lane at $cell');
     }
-    _reportConflicts(edges, flip);
-    return {
-      for (final e in flip.entries)
-        if (e.value) e.key,
-    };
+    return lane;
   }
 
-  static Map<int, List<({int to, bool differ})>> _buildAdjacency(
-    List<({int a, int b, bool differ})> edges,
-  ) {
-    final adj = <int, List<({int to, bool differ})>>{};
-    for (final e in edges) {
-      (adj[e.a] ??= []).add((to: e.b, differ: e.differ));
-      (adj[e.b] ??= []).add((to: e.a, differ: e.differ));
-    }
-    return adj;
-  }
-
-  static void _bfsComponent(
-    int start,
-    Map<int, List<({int to, bool differ})>> adj,
-    Map<int, bool> flip,
-  ) {
-    flip[start] = false;
-    final queue = [start];
-    for (var i = 0; i < queue.length; i++) {
-      final cur = queue[i];
-      final curFlip = flip[cur]!;
-      for (final edge in adj[cur]!) {
-        if (flip.containsKey(edge.to)) continue;
-        flip[edge.to] = edge.differ ? !curFlip : curFlip;
-        queue.add(edge.to);
-      }
-    }
-  }
-
-  void _reportConflicts(
-    List<({int a, int b, bool differ})> edges,
-    Map<int, bool> flip,
-  ) {
-    final reported = <(int, int)>{};
-    for (final e in edges) {
-      if ((flip[e.a]! != flip[e.b]!) == e.differ) continue;
-      final pair = (math.min(e.a, e.b), math.max(e.a, e.b));
-      if (reported.add(pair)) {
-        final cell = _cellOfRings(e.a, e.b);
-        _issues.add(EditorIssue(EditorMessages.rectOpposite(cell), cell: cell));
-      }
-    }
-  }
-
-  /// Any switch cell linking [a] and [b], to point the message somewhere.
-  EditorCell _cellOfRings(int a, int b) {
-    for (final e in _lanes.entries) {
-      if (grid.railAt(e.key.$1) == EditorPiece.switchRectangle &&
-          (e.value.ring == a || e.value.ring == b)) {
-        return e.key.$1;
-      }
-    }
-    return (col: 0, row: 0);
+  static T _require<T>(T? value, String detail) {
+    if (value == null) throw StateError('Missing $detail');
+    return value;
   }
 
   void _checkConnectivity(List<EditorCrossoverPlan> plans) {
@@ -276,8 +250,8 @@ class EditorSwitchPlanner {
     }
     for (final e in grid.rails.entries) {
       if (e.value != EditorPiece.crossing) continue;
-      final h = _lanes[(e.key, true)]!.ring;
-      final v = _lanes[(e.key, false)]!.ring;
+      final h = _requireLane(e.key, true).ring;
+      final v = _requireLane(e.key, false).ring;
       if (h == v) continue;
       adj[h].add(v);
       adj[v].add(h);
@@ -291,9 +265,10 @@ class EditorSwitchPlanner {
     }
     for (var r = 0; r < rings.length; r++) {
       if (!visited.contains(r)) {
-        final cell = rings[r].passes.isNotEmpty
-            ? rings[r].passes.first.cell
-            : rings[r].startStub!.cell;
+        final ring = rings[r];
+        final cell = ring.passes.isNotEmpty
+            ? ring.passes.first.cell
+            : _require(ring.startStub, 'startStub on ring $r').cell;
         _issues.add(
           EditorIssue(EditorMessages.disconnectedTrack(cell), cell: cell),
         );

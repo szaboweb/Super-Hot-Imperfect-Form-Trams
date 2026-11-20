@@ -103,7 +103,8 @@ bool _isSpecialPiece(EditorPiece piece) =>
     piece == EditorPiece.gate ||
     piece == EditorPiece.railIce ||
     piece == EditorPiece.railMelted ||
-    piece == EditorPiece.switchY;
+    piece.isTSwitch ||
+    piece.isYSwitch;
 
 /// Draws sleepers and twin steel rails across [size] in [horizontal] or vertical orientation.
 void drawStraightEditorRail(

@@ -1,39 +1,25 @@
+import 'dart:async' show unawaited;
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../audio/audio_service.dart';
 import '../core/game_log.dart';
-import 'components/atmosphere_component.dart';
-import 'components/building_component.dart';
 import 'components/crash_effect_component.dart';
-import 'components/crossover_component.dart';
-import 'components/depth_component.dart';
-import 'components/gate_component.dart';
-import 'components/ground_component.dart';
-import 'components/hazard_component.dart';
 import 'components/headlight_component.dart';
 import 'components/hud_component.dart';
-import 'components/overhead_wire_component.dart';
-import 'components/signal_component.dart';
-import 'components/smoke_component.dart';
-import 'components/spark_effect_component.dart';
-import 'components/track_component.dart';
-import 'components/track_zone_component.dart';
 import 'components/tram_component.dart';
 import 'components/tram_trailer_component.dart';
-import 'components/turntable_disc_component.dart';
 import 'levels/level_data.dart';
 import 'levels/level_loader_system.dart';
 import 'levels/level_repository.dart';
-import 'levels/prop_data.dart';
 import 'systems/crash_system.dart';
 import 'systems/score_system.dart';
 import 'systems/track_graph.dart';
+import 'tram_world_builder.dart';
 
 /// Root Flame game: loads [initialLevel] (or the first asset level) and builds
 /// the world layer by layer (see `RenderLayer`): depth, ground, track,
@@ -60,7 +46,7 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
 
   late final LevelData _level;
   late final LoadedLevelRuntime _runtime;
-  late final GroundComponent _ground;
+  late final TramWorldBuilder _worldBuilder;
   final Map<TramComponent, double> _aiCruiseSpeeds = {};
   double _shakeTimer = 0;
 
@@ -72,8 +58,6 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
     math.max(visibleSize.x, _level.width),
     math.max(visibleSize.y, _level.height),
   );
-
-  Vector2 get _bounds => Vector2(_level.width, _level.height);
 
   @override
   Color backgroundColor() => const Color(0xFF05080F);
@@ -87,7 +71,15 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
           '${_level.crossovers.length} crossovers',
     );
     _runtime = const LevelLoaderSystem().load(_level);
-    await _buildWorldLayers();
+    _worldBuilder = TramWorldBuilder(
+      level: _level,
+      runtime: _runtime,
+      trams: trams,
+      aiCruiseSpeeds: _aiCruiseSpeeds,
+      world: world,
+      audio: audio,
+    );
+    await world.addAll(_worldBuilder.buildLayers());
     await camera.viewport.add(
       HudComponent(
         trams: trams,
@@ -106,98 +98,6 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
     super.onRemove();
   }
 
-  Future<void> _buildWorldLayers() async {
-    final paths = _runtime.paths.values.toList();
-    _ground = GroundComponent(
-      bounds: _bounds,
-      channels: [
-        for (final p in _level.props.where((p) => p.type == PropType.channel))
-          Rect.fromCenter(
-            center: Offset(p.x, p.y),
-            width: p.width,
-            height: p.height,
-          ),
-      ],
-      paths: paths,
-    );
-    trams.clear();
-    _aiCruiseSpeeds.clear();
-    for (final spawn in _runtime.spawnSystem.advance(0)) {
-      trams.add(_createTram(spawn));
-    }
-    await world.addAll([
-      DepthComponent(),
-      _ground,
-      for (final path in paths) TrackComponent(path: path),
-      for (final z in _runtime.zoneSystem.zones) TrackZoneComponent(zone: z),
-      for (final h in _runtime.hazards)
-        HazardComponent(
-          kind: h.kind,
-          position: Vector2(h.position.x, h.position.y),
-          headingRad: h.headingRad,
-        ),
-      for (final g in _runtime.gateSystem.gates) GateComponent(gate: g),
-      for (final p in _level.props.where((p) => p.type == PropType.signal))
-        SignalComponent(
-          position: Vector2(p.x, p.y),
-          rotationDeg: p.rotationDeg,
-          green: p.state != 'red',
-        ),
-      for (final tram in trams) TramTrailerComponent(lead: tram),
-      ...trams,
-      for (final c in _runtime.crossovers) ..._crossoverComponents(c),
-      for (final p in _level.props.where((p) => p.type == PropType.building))
-        BuildingComponent(
-          position: Vector2(p.x, p.y),
-          size: Vector2(p.width, p.height),
-          angle: p.rotationDeg * math.pi / 180,
-        ),
-      for (final path in paths) OverheadWireComponent(path: path),
-      AtmosphereComponent(bounds: _bounds),
-      SmokeComponent(trams: trams),
-      for (final tram in trams) HeadlightComponent(tram: tram),
-    ]);
-  }
-
-  List<Component> _crossoverComponents(LoadedCrossover c) {
-    final cx = CrossoverComponent(data: c.data, turns: c.turns, trams: trams);
-    return [cx, TurntableDiscComponent(crossover: cx), cx.buildPlatformRail()];
-  }
-
-  TramComponent _createTram(SpawnData spawn) {
-    final path = _runtime.paths[spawn.segment];
-    if (path == null) {
-      throw StateError('Spawn segment "${spawn.segment}" has no geometry');
-    }
-    final tram =
-        TramComponent(
-            path: path,
-            speed: spawn.speed,
-            controls: spawn.controls,
-            trackDistance: spawn.startDistance,
-            color: Color(spawn.color),
-          )
-          ..switches = _runtime.switches
-          ..gates = _runtime.gateSystem
-          ..zones = _runtime.zoneSystem
-          ..occupiedPlatformCenters = _occupiedPlatformCenters
-          ..onSkid = _ground.addSkidMark
-          ..onTurnHit = (p) {
-            world.add(SparkEffectComponent(position: p.clone()));
-            audio?.playSwitchHit();
-          }
-          ..onTurnMiss = () => audio?.playSwitchMiss();
-    if (spawn.controls == null && spawn.speed != 0) {
-      _aiCruiseSpeeds[tram] = spawn.speed;
-    }
-    return tram;
-  }
-
-  Iterable<math.Point<double>> _occupiedPlatformCenters() => [
-    for (final other in trams)
-      if (other.ride != null) other.ride!.turn.center,
-  ];
-
   @override
   void update(double dt) {
     if (_shakeTimer > 0) _shakeTimer = math.max(0, _shakeTimer - dt);
@@ -210,13 +110,15 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
 
   void _spawnDueTrams(double dt) {
     for (final spawn in _runtime.spawnSystem.advance(dt)) {
-      final tram = _createTram(spawn);
+      final tram = _worldBuilder.createTram(spawn);
       trams.add(tram);
-      world.addAll([
-        tram,
-        TramTrailerComponent(lead: tram),
-        HeadlightComponent(tram: tram),
-      ]);
+      unawaited(
+        world.addAll([
+          tram,
+          TramTrailerComponent(lead: tram),
+          HeadlightComponent(tram: tram),
+        ]),
+      );
       GameLog.event(
         'tram',
         '${tram.label} spawned at '
@@ -240,7 +142,7 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
           isCrashed: t.isCrashed,
           position: math.Point(t.position.x, t.position.y),
         ),
-    ], occupiedCenters: _occupiedPlatformCenters());
+    ], occupiedCenters: _worldBuilder.occupiedPlatformCenters());
     for (final e in commands.entries) {
       trams[e.key].throttle = e.value.throttle;
       if (e.value.shouldTurn) {
@@ -287,18 +189,19 @@ class TramGame extends FlameGame with HasKeyboardHandlerComponents {
     for (final idx in event.tramIndices) {
       trams[idx].markCrashed(hazard: event.hazard);
     }
-    world.add(
+    final pending = world.add(
       CrashEffectComponent(
         position: Vector2(event.position.x, event.position.y),
         hazard: event.hazard,
       ),
     );
-    audio?.playCrash(intoWater: event.hazard == TrackEnd.river);
+    if (pending is Future<void>) unawaited(pending);
+    unawaited(audio?.playCrash(intoWater: event.hazard == TrackEnd.river));
     _shakeTimer = _shakeDurationSec;
     GameLog.event('crash', event.description);
     if (!_runtime.scoreSystem.record(event)) return;
     goalMetNotifier.value = true;
-    audio?.playGoalReached();
+    unawaited(audio?.playGoalReached());
     GameLog.event(
       'level',
       'Goal reached: ${_runtime.scoreSystem.crashCount}/'

@@ -42,4 +42,84 @@ void main() {
     expect(GameLog.entries.first.message, 'msg_15');
     expect(GameLog.entries.last.message, 'msg_${GameLog.maxEntries + 14}');
   });
+
+  group('GameLogStore isolation and GameLog.resetForTest', () {
+    test('separate GameLogStore instances keep entries, sinks, and notifiers isolated', () {
+      final firstLines = <String>[];
+      final secondLines = <String>[];
+      final first = GameLogStore(maxEntries: 2, sink: firstLines.add);
+      final second = GameLogStore(sink: secondLines.add, clock: Stopwatch());
+      addTearDown(() {
+        first.dispose();
+        second.dispose();
+      });
+
+      var firstNotified = 0;
+      var secondNotified = 0;
+      first.entriesNotifier.addListener(() => firstNotified++);
+      second.entriesNotifier.addListener(() => secondNotified++);
+
+      first.event('a', 'one');
+      first.event('a', 'two');
+      first.event('a', 'three');
+      second.event('b', 'only');
+
+      expect(first.entries.map((e) => e.message), ['two', 'three']);
+      expect(second.entries.map((e) => e.message), ['only']);
+      expect(second.entries.single.timestamp, '   0.00s');
+      expect(firstLines.length, 3);
+      expect(secondLines.length, 1);
+      expect(firstNotified, 3);
+      expect(secondNotified, 1);
+      expect(GameLog.entries, isEmpty);
+
+      first.clear();
+      expect(first.entries, isEmpty);
+      expect(second.entries.length, 1);
+      expect(firstNotified, 4);
+      expect(secondNotified, 1);
+    });
+
+    test(
+      'dispose is idempotent and prevents further listener notifications',
+      () {
+        final store = GameLogStore();
+        var calls = 0;
+        store.entriesNotifier.addListener(() => calls++);
+        store.event('test', 'before dispose');
+        expect(calls, 1);
+
+        store.dispose();
+        store.dispose();
+        expect(
+          () => store.entriesNotifier.addListener(() {}),
+          throwsStateError,
+        );
+      },
+    );
+
+    test(
+      'GameLog.resetForTest swaps GameLog.instance and resets sink and entries',
+      () {
+        final previous = GameLog.instance;
+        final captured = <String>[];
+        GameLog.sink = captured.add;
+        GameLog.event('switch', 'before reset');
+
+        expect(GameLog.entries.length, 1);
+        expect(captured.length, 1);
+
+        GameLog.resetForTest();
+
+        expect(GameLog.instance, isNot(same(previous)));
+        expect(GameLog.entries, isEmpty);
+        expect(GameLog.sink, isNull);
+        expect(GameLog.entriesNotifier, same(GameLog.instance.entriesNotifier));
+
+        GameLog.event('switch', 'after reset');
+        expect(GameLog.entries.single.message, 'after reset');
+        expect(captured.length, 1);
+      },
+    );
+  });
 }

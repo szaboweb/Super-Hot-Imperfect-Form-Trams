@@ -9,6 +9,7 @@ import '../levels/crossover_data.dart';
 import '../systems/turntable_movement.dart';
 import '../systems/turntable_ride.dart';
 import '../systems/turntable_turn.dart';
+import 's_rail_component.dart';
 import 'slide_rail_component.dart';
 import 'track_component.dart';
 import 'tram_component.dart';
@@ -48,7 +49,9 @@ class CrossoverComponent extends PositionComponent {
   /// Rotation of the platform graphics (rad): the disc angle for rotating platforms,
   /// the rail direction for a sliding one, the last tram heading for a triangle.
   late double platformAngle =
-      data.movement == TurntableMovement.slide && turns.isNotEmpty
+      (data.movement == TurntableMovement.slide ||
+              data.movement == TurntableMovement.turnout) &&
+          turns.isNotEmpty
       ? turns.first.fromHeading - pi / 2
       : 0;
 
@@ -72,6 +75,7 @@ class CrossoverComponent extends PositionComponent {
     TurntableMovement.slide => SlideRailComponent(crossover: this),
     TurntableMovement.reverse => YRailComponent(crossover: this),
     TurntableMovement.curve => WyeRailComponent(crossover: this),
+    TurntableMovement.turnout => SRailComponent(crossover: this),
   };
 
   @override
@@ -102,7 +106,9 @@ class CrossoverComponent extends PositionComponent {
     switch (data.movement) {
       case TurntableMovement.rotate:
         platformAngle = turntableAngle;
-      case TurntableMovement.slide || TurntableMovement.curve:
+      case TurntableMovement.slide ||
+          TurntableMovement.curve ||
+          TurntableMovement.turnout:
         break;
       case TurntableMovement.reverse:
         final ride = activeRide;

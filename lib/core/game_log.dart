@@ -16,27 +16,34 @@ class GameLogEntry {
   String get formatted => '[$timestamp] $category: $message';
 }
 
-/// In-memory ring-buffered and console log for game and editor events.
-/// Lines look like `[  12.34s] switch: ...`; console printing is debug-only.
-class GameLog {
-  GameLog._();
+/// Instantiable in-memory ring-buffered and console log store.
+class GameLogStore {
+  /// Creates a log store with an optional [maxEntries] cap, [sink], and [clock].
+  GameLogStore({
+    this.maxEntries = GameLog.maxEntries,
+    this.sink,
+    Stopwatch? clock,
+  }) : assert(maxEntries > 0, 'maxEntries must be positive'),
+       _clock = clock ?? (Stopwatch()..start());
 
   /// Maximum number of entries retained in memory.
-  static const int maxEntries = 200;
+  final int maxEntries;
 
   /// Set in tests to capture lines instead of printing them.
-  static void Function(String line)? sink;
+  void Function(String line)? sink;
 
   /// Reactive list of recent log entries (oldest first, capped at [maxEntries]).
-  static final ValueNotifier<List<GameLogEntry>> entriesNotifier =
+  final ValueNotifier<List<GameLogEntry>> entriesNotifier =
       ValueNotifier<List<GameLogEntry>>(const []);
 
-  static List<GameLogEntry> get entries => entriesNotifier.value;
+  /// Snapshot of currently retained entries, oldest first.
+  List<GameLogEntry> get entries => entriesNotifier.value;
 
-  static final Stopwatch _clock = Stopwatch()..start();
+  final Stopwatch _clock;
+  bool _disposed = false;
 
   /// Records a new log entry, notifies listeners, and prints in debug mode.
-  static void event(String tag, String message) {
+  void event(String tag, String message) {
     final seconds = (_clock.elapsedMilliseconds / 1000).toStringAsFixed(2);
     final entry = GameLogEntry(
       timestamp: '${seconds.padLeft(7)}s',
@@ -54,12 +61,20 @@ class GameLog {
   }
 
   /// Clears all stored in-memory log entries and notifies listeners.
-  static void clear() {
+  void clear() {
     if (entriesNotifier.value.isEmpty) return;
     entriesNotifier.value = const [];
   }
 
-  static void _appendEntry(GameLogEntry entry) {
+  /// Releases the [entriesNotifier] and stops the internal stopwatch.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _clock.stop();
+    entriesNotifier.dispose();
+  }
+
+  void _appendEntry(GameLogEntry entry) {
     final current = entriesNotifier.value;
     final start = current.length >= maxEntries
         ? current.length - maxEntries + 1
@@ -69,5 +84,45 @@ class GameLog {
       entry,
     ];
     entriesNotifier.value = List.unmodifiable(next);
+  }
+}
+
+/// Global facade over a shared [GameLogStore] for game and editor events.
+/// Lines look like `[  12.34s] switch: ...`; console printing is debug-only.
+class GameLog {
+  GameLog._();
+
+  /// Maximum number of entries retained in memory by the default store.
+  static const int maxEntries = 200;
+
+  static GameLogStore _instance = GameLogStore();
+
+  /// Shared [GameLogStore] backing the static [GameLog] methods.
+  static GameLogStore get instance => _instance;
+
+  /// Set in tests to capture lines instead of printing them.
+  static void Function(String line)? get sink => _instance.sink;
+  static set sink(void Function(String line)? value) => _instance.sink = value;
+
+  /// Reactive list of recent log entries (oldest first, capped at [maxEntries]).
+  static ValueNotifier<List<GameLogEntry>> get entriesNotifier =>
+      _instance.entriesNotifier;
+
+  /// Snapshot of currently retained entries, oldest first.
+  static List<GameLogEntry> get entries => _instance.entries;
+
+  /// Records a new log entry, notifies listeners, and prints in debug mode.
+  static void event(String tag, String message) =>
+      _instance.event(tag, message);
+
+  /// Clears all stored in-memory log entries and notifies listeners.
+  static void clear() => _instance.clear();
+
+  /// Replaces [instance] with a fresh [GameLogStore] for isolated tests.
+  @visibleForTesting
+  static void resetForTest() {
+    final previous = _instance;
+    _instance = GameLogStore();
+    previous.dispose();
   }
 }

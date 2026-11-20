@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'gate_system.dart';
 import 'track_graph.dart';
 import 'track_path.dart';
+import 'tram_physics.dart';
 import 'turntable_movement.dart';
 import 'turntable_switch_system.dart';
 import 'turntable_turn.dart';
@@ -38,14 +39,14 @@ class TramAiSystem {
     this.patrolSwitchIntervalSec = 4.0,
   });
 
-  /// Vehicle linear acceleration (px/s²) matching `TramComponent.acceleration`.
-  static const double vehicleAcceleration = 220;
+  /// Vehicle linear acceleration (px/s²) shared via [TramPhysics].
+  static const double vehicleAcceleration = TramPhysics.acceleration;
 
-  /// Per-second velocity retention factor matching `TramComponent.drag`.
-  static const double vehicleDrag = 0.8;
+  /// Per-second velocity retention factor shared via [TramPhysics].
+  static const double vehicleDrag = TramPhysics.drag;
 
-  /// Half the tram hull length (px) matching `TramComponent.halfLength`.
-  static const double vehicleHalfLength = 28;
+  /// Half the tram hull length (px) shared via [TramPhysics].
+  static const double vehicleHalfLength = TramPhysics.halfLength;
 
   /// Remaining distance (px) to an open-track hazard that triggers panic braking.
   static const double panicBrakeLookaheadPx = 75;
@@ -194,7 +195,8 @@ class TramAiSystem {
     Iterable<math.Point<double>> occupiedCenters,
   ) => [
     for (final turn in switches.turns)
-      if (!_isOccupied(turn.center, occupiedCenters) &&
+      if (!turn.autoBoard &&
+          !_isOccupied(turn.center, occupiedCenters) &&
           turn.board(
                 tram.path,
                 tram.trackDistance,

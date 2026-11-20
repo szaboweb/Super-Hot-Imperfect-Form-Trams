@@ -56,7 +56,18 @@ class _EditorSidebarState extends State<EditorSidebar> {
         (EditorPiece.switchCircle, 'Kör (90°)'),
         (EditorPiece.switchRectangle, 'Téglalap (sáv)'),
         (EditorPiece.switchTriangle, 'Háromszög (180°)'),
-        (EditorPiece.switchY, 'Y váltó (kisív)'),
+        (EditorPiece.switchTNorth, 'T váltó ↑ (É)'),
+        (EditorPiece.switchTSouth, 'T váltó ↓ (D)'),
+        (EditorPiece.switchTEast, 'T váltó → (K)'),
+        (EditorPiece.switchTWest, 'T váltó ← (Ny)'),
+        (EditorPiece.switchYNorthLeft, 'Y váltó ↑ bal'),
+        (EditorPiece.switchYNorthRight, 'Y váltó ↑ jobb'),
+        (EditorPiece.switchYSouthLeft, 'Y váltó ↓ bal'),
+        (EditorPiece.switchYSouthRight, 'Y váltó ↓ jobb'),
+        (EditorPiece.switchYEastLeft, 'Y váltó → bal'),
+        (EditorPiece.switchYEastRight, 'Y váltó → jobb'),
+        (EditorPiece.switchYWestLeft, 'Y váltó ← bal'),
+        (EditorPiece.switchYWestRight, 'Y váltó ← jobb'),
         (EditorPiece.gate, 'Sorompó'),
       ],
     ),
@@ -270,8 +281,6 @@ class _ShelfTile extends StatelessWidget {
 
   EditorPiecePainter _buildPainter() => EditorPiecePainter(
     piece: piece,
-    wyeStemSide: piece == EditorPiece.switchY
-        ? EditorSide.south
-        : EditorSide.south,
+    wyeStemSide: piece.tStemSide ?? EditorSide.south,
   );
 }

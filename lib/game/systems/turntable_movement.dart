@@ -12,4 +12,7 @@ enum TurntableMovement {
 
   /// Tight quarter-circle turnout arc onto a left or right perpendicular branch (wye).
   curve,
+
+  /// S-curve parallel-lane Y-switch: diverges on SHIFT, merges automatically back.
+  turnout,
 }

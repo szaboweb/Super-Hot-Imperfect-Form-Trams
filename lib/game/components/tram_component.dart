@@ -12,6 +12,7 @@ import '../systems/gate_system.dart';
 import '../systems/track_graph.dart';
 import '../systems/track_path.dart';
 import '../systems/track_zone_system.dart';
+import '../systems/tram_physics.dart';
 import '../systems/turntable_ride.dart';
 import '../systems/turntable_switch_system.dart';
 
@@ -38,21 +39,21 @@ class TramComponent extends PositionComponent with KeyboardHandler {
   TrackPath path;
   Sprite? sprite;
 
-  static const double maxSpeed = 320;
-  static const double acceleration = 220;
-  static const double drag = 0.8;
+  static const double maxSpeed = TramPhysics.maxSpeed;
+  static const double acceleration = TramPhysics.acceleration;
+  static const double drag = TramPhysics.drag;
 
   /// Half the tram length in px (the nose/tail reach used by turntables).
-  static const double halfLength = 28;
+  static const double halfLength = TramPhysics.halfLength;
 
   /// Minimum |speed| (px/s) at which braking leaves skid marks.
-  static const double skidMinSpeed = 60;
+  static const double skidMinSpeed = TramPhysics.skidMinSpeed;
 
   /// Minimum braking multiplier when brakes are fully overheated (0..1).
-  static const double minBrakeEfficiency = 0.25;
+  static const double minBrakeEfficiency = TramPhysics.minBrakeEfficiency;
 
   /// Duration in seconds of the river/pit submersion animation.
-  static const double sinkDurationSec = 0.65;
+  static const double sinkDurationSec = TramPhysics.sinkDurationSec;
 
   /// -1 (brake/reverse) .. 1 (accelerate)
   double throttle = 0;
@@ -223,10 +224,26 @@ class TramComponent extends PositionComponent with KeyboardHandler {
     if (ride == null) {
       trackDistance += speed * dt;
       _snapToPath();
+      _checkAutoTurnout();
     } else {
       _followRide(ride, dt);
     }
     if (skidding) onSkid?.call(position, angle);
+  }
+
+  void _checkAutoTurnout() {
+    final system = switches;
+    if (system == null || speed == 0) return;
+    final auto = system.checkAutoBoard(
+      path: path,
+      distance: trackDistance,
+      speed: speed,
+      halfLength: halfLength,
+      occupiedCenters: occupiedPlatformCenters?.call() ?? const [],
+    );
+    if (auto == null || !auto.isHit) return;
+    _ride = auto.ride;
+    GameLog.event('switch', auto.describe(tramLabel: label, keyLabel: 'AUTO'));
   }
 
   void _advanceSink(double dt) {

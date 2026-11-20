@@ -35,6 +35,17 @@ Path platformShapePath(
       ),
     PlatformShape.triangle => _trianglePath(radius * 1.15),
     PlatformShape.wye => _octagonPath(radius),
+    PlatformShape.turnout =>
+      Path()..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: radius * 2,
+            height: lanePitch + 40,
+          ),
+          const Radius.circular(14),
+        ),
+      ),
   };
 }
 

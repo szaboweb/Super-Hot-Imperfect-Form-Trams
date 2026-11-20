@@ -21,7 +21,11 @@ class EditorBuildResult {
   bool get isValid => json != null;
 
   /// The playable level (only when [isValid]).
-  LevelData get level => LevelData.fromJson(json!);
+  LevelData get level {
+    final data = json;
+    if (data == null) throw StateError('Cannot build level from failed result');
+    return LevelData.fromJson(data);
+  }
 }
 
 /// Turns an [EditorGrid] into a level JSON map (same keys as
@@ -144,7 +148,8 @@ class EditorLevelBuilder {
     List<EditorRing> rings,
     EditorPiece tram,
   ) {
-    final cell = grid.tramCell(tram)!;
+    final cell = grid.tramCell(tram);
+    if (cell == null) throw StateError('Missing tram cell for $tram');
     for (var i = 0; i < rings.length; i++) {
       final along = geometry.distanceToCellMiddle(rings[i], cell);
       if (along == null) continue;
@@ -161,31 +166,44 @@ class EditorLevelBuilder {
   }
 
   Map<String, dynamic> _crossover(EditorCrossoverPlan c) {
-    final a = _segmentId(c.rings.first);
-    final b = _segmentId(c.rings.last);
     final shape = switch (c.piece) {
       EditorPiece.switchRectangle => 'rectangle',
       EditorPiece.switchTriangle => 'triangle',
-      EditorPiece.switchY => 'wye',
+      _ when c.piece.isTSwitch => 'wye',
+      _ when c.piece.isYSwitch => 'turnout',
       _ => 'circle',
     };
-    final links = (c.piece == EditorPiece.switchTriangle || a == b)
-        ? [
-            for (final r in c.rings)
-              {'from': _segmentId(r), 'to': _segmentId(r)},
-          ]
-        : [
-            {'from': a, 'to': b},
-            {'from': b, 'to': a},
-          ];
+    final stem = c.stemCenter;
+    final forward = c.forwardSide;
     return {
       'id': c.id,
       'platformShape': shape,
       'x': _r(c.center.x),
       'y': _r(c.center.y),
       'radius': c.radius.round(),
-      'links': links,
+      if (stem != null) 'stemPoint': [_r(stem.x), _r(stem.y)],
+      if (forward != null) 'forward': [forward.dCol, forward.dRow],
+      'links': _buildCrossoverLinks(c),
     };
+  }
+
+  List<Map<String, String>> _buildCrossoverLinks(EditorCrossoverPlan c) {
+    final a = _segmentId(c.rings.first);
+    final b = _segmentId(c.rings.last);
+    if (c.piece.isYSwitch) {
+      return [
+        {'from': a, 'to': b},
+      ];
+    }
+    if (c.piece == EditorPiece.switchTriangle || a == b) {
+      return [
+        for (final r in c.rings) {'from': _segmentId(r), 'to': _segmentId(r)},
+      ];
+    }
+    return [
+      {'from': a, 'to': b},
+      {'from': b, 'to': a},
+    ];
   }
 
   double _r(double v) => (v * 100).round() / 100;

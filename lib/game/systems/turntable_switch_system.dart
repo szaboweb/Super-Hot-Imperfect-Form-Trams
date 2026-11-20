@@ -51,7 +51,9 @@ class TurnDecision {
       'platform slides ${turn.slideDistance.round()}px',
     TurntableMovement.reverse => 'Y-turn reverses the tram',
     TurntableMovement.curve =>
-      'Y-switch curves ${(turn.sweep * 180 / math.pi).round()}°',
+      'T-switch curves ${(turn.sweep * 180 / math.pi).round()}°',
+    TurntableMovement.turnout =>
+      'Y-turnout shifts ${turn.slideDistance.round()}px',
   };
 }
 
@@ -81,6 +83,7 @@ class TurntableSwitchSystem {
     final candidates = <({TurntableTurn turn, TurntableRide ride})>[];
     TurntableTurn? busyTurn;
     for (final turn in turns) {
+      if (turn.autoBoard) continue;
       final ride = turn.board(path, distance, speed, halfLength);
       if (ride == null) continue;
       if (!_matchesCurveSteer(turn, desiredDirection, turnSteer)) continue;
@@ -106,6 +109,37 @@ class TurntableSwitchSystem {
       halfLength: halfLength,
       isOccupied: busyTurn != null,
     );
+  }
+
+  /// Checks whether the tram automatically boards a converging (`autoBoard`)
+  /// turnout switch near the platform centre without pressing SHIFT.
+  TurnDecision? checkAutoBoard({
+    required TrackPath path,
+    required double distance,
+    required double speed,
+    required double halfLength,
+    Iterable<math.Point<double>> occupiedCenters = const [],
+  }) {
+    if (speed == 0) return null;
+    final travelSign = speed < 0 ? -1.0 : 1.0;
+    for (final turn in turns) {
+      if (!turn.autoBoard) continue;
+      final offset = turn.offsetOf(path, distance);
+      if (offset == null) continue;
+      final signedOffset = offset * travelSign;
+      if (signedOffset < -10.0 || signedOffset > 10.0) continue;
+      if (_isOccupied(turn.center, occupiedCenters)) continue;
+      final ride = turn.board(path, distance, speed, halfLength);
+      if (ride != null) {
+        return TurnDecision(
+          turn: turn,
+          offset: offset,
+          halfLength: halfLength,
+          ride: ride,
+        );
+      }
+    }
+    return null;
   }
 
   static bool _matchesCurveSteer(

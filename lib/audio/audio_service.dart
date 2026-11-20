@@ -1,6 +1,8 @@
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/game_log.dart';
+
 /// Backend callback that plays an audio asset relative to `assets/audio/`.
 typedef AudioPlayBackend = Future<void> Function(String file, double volume);
 
@@ -69,8 +71,8 @@ class AudioService {
     _lastPlayedAt[file] = now;
     try {
       await _backend(file, volume);
-    } on Object catch (_) {
-      // Headless tests and restricted browser autoplay contexts safely no-op.
+    } on Object catch (error) {
+      GameLog.event('audio', 'Playback skipped ($file): $error');
     }
   }
 }

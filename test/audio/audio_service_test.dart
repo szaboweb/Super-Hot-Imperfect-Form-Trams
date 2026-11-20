@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:super_hot_imperfect_form_trams/audio/audio_service.dart';
+import 'package:super_hot_imperfect_form_trams/core/game_log.dart';
 
 void main() {
   test('semantic play methods route expected SFX files and volumes', () async {
@@ -71,14 +72,28 @@ void main() {
     },
   );
 
-  test('swallows backend errors safely in headless environments', () async {
-    final service = AudioService(
-      backend: (_, _) => Future<void>.error(StateError('no audio channel')),
-    );
-    addTearDown(service.dispose);
+  test(
+    'logs and absorbs backend errors safely in headless environments',
+    () async {
+      GameLog.clear();
+      addTearDown(GameLog.clear);
+      final service = AudioService(
+        backend: (_, _) => Future<void>.error(StateError('no audio channel')),
+      );
+      addTearDown(service.dispose);
 
-    await expectLater(service.playGoalReached(), completes);
-  });
+      await expectLater(service.playGoalReached(), completes);
+      expect(
+        GameLog.entries.any(
+          (e) =>
+              e.category == 'audio' &&
+              e.message.contains('sfx/sfx_goal_01.wav') &&
+              e.message.contains('no audio channel'),
+        ),
+        isTrue,
+      );
+    },
+  );
 
   test('all 5 synthesized WAV assets exist with valid RIFF/WAVE headers', () {
     const files = [

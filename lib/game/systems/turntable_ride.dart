@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'curve_turn_path.dart';
+import 's_turn_path.dart';
 import 'track_path.dart';
 import 'turntable_movement.dart';
 import 'turntable_turn.dart';
@@ -10,7 +11,8 @@ import 'y_turn_path.dart';
 /// rotate = the tram drives along the disc's diameter while the disc turns under it;
 /// slide = it drives straight while the platform slides it sideways onto the parallel track;
 /// reverse = it follows the platform's Y-shaped rails round the arc and leaves backwards;
-/// curve = it drives along a tight quarter-circle turnout arc onto a perpendicular branch.
+/// curve = it drives along a tight quarter-circle turnout arc onto a perpendicular branch;
+/// turnout = it smoothly S-curves sideways onto a parallel branch lane (or merges back).
 /// Pure Dart (no Flame).
 class TurntableRide {
   TurntableRide({
@@ -22,11 +24,18 @@ class TurntableRide {
     this.travelSign = 1.0,
   }) : _entryLength = turn.radius + halfLength,
        _entryHeading = entry.headingAt(turn.alongOn(entry) ?? 0),
-       _guidedPath = _buildGuidedPath(turn, turn.radius + halfLength) {
+       _guidedPath = _buildGuidedPath(
+         turn,
+         turn.radius + halfLength,
+         entry.headingAt(turn.alongOn(entry) ?? 0),
+         travelSign,
+       ) {
     final isGuided = _guidedPath != null;
-    final leadThreshold = turn.movement == TurntableMovement.curve
-        ? -turn.radius
-        : 0.0;
+    final leadThreshold = switch (turn.movement) {
+      TurntableMovement.curve => -turn.radius,
+      TurntableMovement.turnout => -32.0,
+      _ => 0.0,
+    };
     _leadOffset = math.max(0.0, _signedOffset - leadThreshold);
     _startU =
         (isGuided ? math.min(_signedOffset, leadThreshold) : _signedOffset) +
@@ -34,19 +43,30 @@ class TurntableRide {
     _u = _startU;
   }
 
-  static TrackPath? _buildGuidedPath(TurntableTurn turn, double entryLength) =>
-      switch (turn.movement) {
-        TurntableMovement.reverse => yTurnPath(
-          radius: turn.radius,
-          entry: entryLength,
-        ),
-        TurntableMovement.curve => curveTurnPath(
-          radius: turn.radius,
-          entry: entryLength,
-          sweep: turn.sweep,
-        ),
-        TurntableMovement.rotate || TurntableMovement.slide => null,
-      };
+  static TrackPath? _buildGuidedPath(
+    TurntableTurn turn,
+    double entryLength,
+    double entryHeading,
+    double travelSign,
+  ) => switch (turn.movement) {
+    TurntableMovement.reverse => yTurnPath(
+      radius: turn.radius,
+      entry: entryLength,
+    ),
+    TurntableMovement.curve => curveTurnPath(
+      radius: turn.radius,
+      entry: entryLength,
+      sweep: turn.sweep,
+    ),
+    TurntableMovement.turnout => sTurnPath(
+      slideDistance:
+          (turn.slide.x * math.cos(entryHeading) +
+              turn.slide.y * math.sin(entryHeading)) *
+          travelSign,
+      entry: entryLength,
+    ),
+    TurntableMovement.rotate || TurntableMovement.slide => null,
+  };
 
   final TurntableTurn turn;
 
@@ -93,7 +113,9 @@ class TurntableRide {
   /// tram's entry heading for a reverse (the Y points the way the tram came), else 0.
   double get platformAngle => switch (movement) {
     TurntableMovement.rotate => angle,
-    TurntableMovement.slide || TurntableMovement.curve => 0,
+    TurntableMovement.slide ||
+    TurntableMovement.curve ||
+    TurntableMovement.turnout => 0,
     TurntableMovement.reverse =>
       _entryHeading + (travelSign < 0 ? math.pi : 0.0),
   };
@@ -107,23 +129,28 @@ class TurntableRide {
   math.Point<double> get position => switch (movement) {
     TurntableMovement.rotate => _rotated(),
     TurntableMovement.slide => _slid(),
-    TurntableMovement.reverse || TurntableMovement.curve => _guidedPosition(),
+    TurntableMovement.reverse ||
+    TurntableMovement.curve ||
+    TurntableMovement.turnout => _guidedPosition(_requireGuidedPath()),
   };
 
   /// World heading of the tram (same convention as `TrackPath.headingAt`).
   double get heading => switch (movement) {
     TurntableMovement.rotate => turn.fromHeading + angle,
     TurntableMovement.slide => turn.fromHeading,
-    TurntableMovement.reverse || TurntableMovement.curve =>
-      _entryHeading + _guidedPath!.headingAt(_safeGuidedHeadingU()),
+    TurntableMovement.reverse ||
+    TurntableMovement.curve ||
+    TurntableMovement.turnout => _guidedHeading(_requireGuidedPath()),
   };
 
   /// Movement done and the whole tram is off the platform: it joins [exitPath].
-  bool get finished => _guidedPath != null
-      ? _u >= _guidedPath.length
-      : progress >= 1 && offset.abs() >= turn.radius + halfLength;
+  bool get finished {
+    final guided = _guidedPath;
+    if (guided != null) return _u >= guided.length;
+    return progress >= 1 && offset.abs() >= turn.radius + halfLength;
+  }
 
-  /// The path the tram continues on: `to` for rotate/slide/curve, the reversed [entry] for reverse.
+  /// The path the tram continues on: `to` for rotate/slide/curve/turnout, the reversed [entry] for reverse.
   TrackPath get exitPath =>
       movement == TurntableMovement.reverse ? entry.reversed : turn.to;
 
@@ -132,6 +159,7 @@ class TurntableRide {
     TurntableMovement.reverse =>
       entry.reversed.nearest(turn.center).along + _entryLength * travelSign,
     TurntableMovement.curve => turn.toAlong + turn.radius * travelSign,
+    TurntableMovement.turnout => turn.toAlong + 32.0 * travelSign,
     TurntableMovement.rotate ||
     TurntableMovement.slide => turn.toAlong + offset,
   };
@@ -144,6 +172,17 @@ class TurntableRide {
       offset += speed * dt;
     }
   }
+
+  TrackPath _requireGuidedPath() {
+    final guided = _guidedPath;
+    if (guided == null) {
+      throw StateError('TurntableRide($movement) requires a guided path.');
+    }
+    return guided;
+  }
+
+  double _guidedHeading(TrackPath guided) =>
+      _entryHeading + guided.headingAt(_safeGuidedHeadingU(guided));
 
   math.Point<double> _rotated() {
     final p = _turned(
@@ -162,8 +201,7 @@ class TurntableRide {
     );
   }
 
-  math.Point<double> _guidedPosition() {
-    final guided = _guidedPath!;
+  math.Point<double> _guidedPosition(TrackPath guided) {
     final span = guided.length - _startU;
     final t = span <= 0 ? 1.0 : ((_u - _startU) / span).clamp(0.0, 1.0);
     final local = guided.positionAt(_u.clamp(0.0, guided.length));
@@ -173,13 +211,16 @@ class TurntableRide {
       adjustedY,
       _entryHeading + (travelSign < 0 ? math.pi : 0.0),
     );
-    return math.Point(turn.center.x + p.x, turn.center.y + p.y);
+    final origin = movement == TurntableMovement.turnout
+        ? turn.fromPoint
+        : turn.center;
+    return math.Point(origin.x + p.x, origin.y + p.y);
   }
 
   /// Keeps heading lookups inside the straight Y stem away from the closed-loop seam.
-  double _safeGuidedHeadingU() {
-    final guided = _guidedPath!;
-    if (movement == TurntableMovement.curve) {
+  double _safeGuidedHeadingU(TrackPath guided) {
+    if (movement == TurntableMovement.curve ||
+        movement == TurntableMovement.turnout) {
       return _u.clamp(0.0, guided.length);
     }
     final limit = math.max(7.0, guided.length - 7.0);

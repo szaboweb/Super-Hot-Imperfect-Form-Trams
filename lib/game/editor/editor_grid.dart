@@ -100,53 +100,28 @@ class EditorGrid {
       final n = (col: cell.col + s.dCol, row: cell.row + s.dRow);
       final piece = railAt(n);
       if (piece == null) continue;
-      final opens =
-          piece.sides.contains(s.opposite) ||
-          piece.isCrossing ||
-          piece == EditorPiece.switchY ||
-          (piece.isAutoStraight &&
-              (isVerticalInline(n) ? !s.isHorizontal : s.isHorizontal));
-      if (opens) return s;
+      if (piece.connectsToSide(
+        s.opposite,
+        verticalInline: isVerticalInline(n),
+      )) {
+        return s;
+      }
     }
     return EditorSide.west;
   }
 
-  /// Branching stem side of a 3-way [EditorPiece.switchY] at [cell], or null
-  /// if [cell] is not a Y-switch or has 4 connected branches.
-  EditorSide? wyeStemSide(EditorCell cell) {
-    if (railAt(cell) != EditorPiece.switchY) return null;
-    final openSides = [
-      for (final s in EditorSide.values)
-        if (_isSideOpen(cell, s)) s,
-    ];
-    if (openSides.length == 4) return null;
-    if (openSides.length == 3) {
-      final missing = EditorSide.values.firstWhere(
-        (s) => !openSides.contains(s),
-      );
-      return missing.opposite;
-    }
-    final vertical =
-        !(openSides.contains(EditorSide.west) &&
-            openSides.contains(EditorSide.east)) &&
-        openSides.contains(EditorSide.north) &&
-        openSides.contains(EditorSide.south);
-    return vertical ? EditorSide.east : EditorSide.south;
-  }
+  /// Stem side of a directional T-switch at [cell], or null for other pieces.
+  EditorSide? wyeStemSide(EditorCell cell) => railAt(cell)?.tStemSide;
 
   bool _isSideOpen(EditorCell cell, EditorSide side) {
     final n = (col: cell.col + side.dCol, row: cell.row + side.dRow);
     final piece = railAt(n);
     if (piece == null) return false;
-    if (piece.isAutoStraight ||
-        piece.isCrossing ||
-        piece == EditorPiece.switchY) {
-      return true;
-    }
     if (piece == EditorPiece.bufferStop) {
       return _bufferAcceptsFrom(n, side.opposite);
     }
-    return piece.sides.contains(side.opposite);
+    if (piece.isAutoStraight) return true;
+    return piece.connectsToSide(side.opposite);
   }
 
   bool _bufferAcceptsFrom(EditorCell bufferCell, EditorSide fromSide) {
@@ -158,10 +133,7 @@ class EditorGrid {
       );
       final piece = railAt(nb);
       if (piece == null || piece == EditorPiece.bufferStop) continue;
-      if (piece.sides.contains(other.opposite) ||
-          piece.isCrossing ||
-          piece == EditorPiece.switchY ||
-          piece.isAutoStraight) {
+      if (piece.isAutoStraight || piece.connectsToSide(other.opposite)) {
         return false;
       }
     }
@@ -262,9 +234,11 @@ class EditorGrid {
     },
   };
 
-  static EditorPiece _pieceByName(Object? name) =>
-      EditorPiece.values.asNameMap()[name] ??
-      (throw FormatException('Unknown editor piece "$name"'));
+  static EditorPiece _pieceByName(Object? name) {
+    if (name == 'switchY') return EditorPiece.switchTSouth;
+    return EditorPiece.values.asNameMap()[name] ??
+        (throw FormatException('Unknown editor piece "$name"'));
+  }
 
   /// Lossless compact ASCII map of rails plus 1-based tram coordinates.
   String toAscii() {
@@ -296,7 +270,18 @@ class EditorGrid {
     EditorPiece.switchCircle => '◎',
     EditorPiece.switchRectangle => '▬',
     EditorPiece.switchTriangle => '△',
-    EditorPiece.switchY => '¥',
+    EditorPiece.switchTNorth ||
+    EditorPiece.switchTSouth ||
+    EditorPiece.switchTEast ||
+    EditorPiece.switchTWest => 'T',
+    EditorPiece.switchYNorthLeft ||
+    EditorPiece.switchYNorthRight ||
+    EditorPiece.switchYSouthLeft ||
+    EditorPiece.switchYSouthRight ||
+    EditorPiece.switchYEastLeft ||
+    EditorPiece.switchYEastRight ||
+    EditorPiece.switchYWestLeft ||
+    EditorPiece.switchYWestRight => 'Y',
     EditorPiece.gate => '╫',
     EditorPiece.railIce => '≈',
     EditorPiece.railMelted => '~',

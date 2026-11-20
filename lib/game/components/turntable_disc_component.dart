@@ -112,7 +112,32 @@ class TurntableDiscComponent extends PositionComponent {
           ..moveTo(8, -12)
           ..lineTo(12, -8)
           ..lineTo(8, -4),
+      TurntableMovement.turnout => _turnoutCuePath(),
     };
     canvas.drawPath(path, cue);
+  }
+
+  Path _turnoutCuePath() {
+    var sign = 1.0;
+    if (crossover.turns.isNotEmpty) {
+      final t = crossover.turns.first;
+      final lat =
+          t.slide.x * math.cos(t.fromHeading) +
+          t.slide.y * math.sin(t.fromHeading);
+      if (lat != 0) sign = lat < 0 ? -1.0 : 1.0;
+    }
+    final stemY = -sign * 10.0;
+    final branchY = sign * 10.0;
+    return Path()
+      ..moveTo(-14, stemY)
+      ..lineTo(14, stemY)
+      ..moveTo(10, stemY - 3)
+      ..lineTo(14, stemY)
+      ..lineTo(10, stemY + 3)
+      ..moveTo(-10, stemY)
+      ..cubicTo(0, stemY, 0, branchY, 13, branchY)
+      ..moveTo(9, branchY - 3)
+      ..lineTo(13, branchY)
+      ..lineTo(9, branchY + 3);
   }
 }
